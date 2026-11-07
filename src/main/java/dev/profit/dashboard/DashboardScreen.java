@@ -66,7 +66,6 @@ public class DashboardScreen extends Screen {
     private void onEndSession() {
         if (!PaymentLedger.isSessionActive()) {
             PaymentLedger.startSession();
-            PaymentListener.chat("New session started.", net.minecraft.ChatFormatting.GOLD);
             endButton.setMessage(Component.literal(sessionLabel()));
             return;
         }
@@ -77,7 +76,7 @@ public class DashboardScreen extends Screen {
             return;
         }
         confirmUntil = 0;
-        PaymentListener.announceEnd(PaymentLedger.endSession());
+        PaymentLedger.endSession();
         endButton.setMessage(Component.literal(sessionLabel()));
     }
 

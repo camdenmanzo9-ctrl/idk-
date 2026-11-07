@@ -39,7 +39,8 @@ public class DashboardClient implements ClientModInitializer {
                         ctx.getSource().sendFeedback(Component.literal("[Bettors] No session running. Use /bettors startsession"));
                         return 1;
                     }
-                    PaymentListener.announceEnd(PaymentLedger.endSession());
+                    PaymentLedger.endSession();
+                    ctx.getSource().sendFeedback(Component.literal("[Bettors] Session ended."));
                     return 1;
                 }))
                 .then(literal("startsession").executes(ctx -> {
