@@ -52,9 +52,11 @@ public final class PaymentListener {
                 + " | received " + Money.format(s.received())
                 + " | sent " + Money.format(s.sent())
                 + " | you " + (p >= 0 ? "+" : "") + Money.format(p)
-                + " | " + s.players() + " players. New session started.", ChatFormatting.GOLD);
+                + " | " + s.players() + " players. Use Start Session or /bettors startsession for a new one.", ChatFormatting.GOLD);
     }
 
     public static void chat(String msg, ChatFormatting color) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) mc.player.sendSystemMessage(Component.literal("[Bettors] " + msg).withStyle(color));    }}
+        if (mc.player != null) mc.player.sendSystemMessage(Component.literal("[Bettors] " + msg).withStyle(color));
+    }
+}

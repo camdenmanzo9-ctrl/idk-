@@ -35,12 +35,22 @@ public class DashboardClient implements ClientModInitializer {
             literal("bettors")
                 .executes(ctx -> { openNextTick = true; return 1; })
                 .then(literal("endsession").executes(ctx -> {
+                    if (!PaymentLedger.isSessionActive()) {
+                        ctx.getSource().sendFeedback(Component.literal("[Bettors] No session running. Use /bettors startsession"));
+                        return 1;
+                    }
                     PaymentListener.announceEnd(PaymentLedger.endSession());
                     return 1;
                 }))
+                .then(literal("startsession").executes(ctx -> {
+                    PaymentLedger.startSession();
+                    ctx.getSource().sendFeedback(Component.literal("[Bettors] New session started."));
+                    return 1;
+                }))
                 .then(literal("session").executes(ctx -> {
-                    ctx.getSource().sendFeedback(Component.literal("[Bettors] Session running for "
-                            + PaymentLedger.formatDuration(PaymentLedger.sessionMillis())));
+                    ctx.getSource().sendFeedback(Component.literal(PaymentLedger.isSessionActive()
+                            ? "[Bettors] Session running for " + PaymentLedger.formatDuration(PaymentLedger.sessionMillis())
+                            : "[Bettors] No session running (last one lasted " + PaymentLedger.formatDuration(PaymentLedger.sessionMillis()) + ")"));
                     return 1;
                 }))
                 .then(literal("debug").executes(ctx -> {

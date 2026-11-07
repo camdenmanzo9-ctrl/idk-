@@ -26,12 +26,26 @@ public final class PaymentLedger {
         public long volume() { return paidYou + youPaid; }
     }
 
+    /** One finished session, kept for the Sessions tab. */
+    public static final class SessionRecord {
+        public long start;
+        public long end;
+        public long received;
+        public long sent;
+        public int players;
+        public long profit() { return received - sent; }
+        public long length() { return end - start; }
+    }
+
     private static final class Data {
         Map<String, Entry> allTime = new LinkedHashMap<>();
         Map<String, Entry> session = new LinkedHashMap<>();
         long sessionStart = System.currentTimeMillis();
+        long sessionEnd = 0;
+        boolean sessionActive = true;
         long lastSessionLength = -1;
         long lastSessionProfit = 0;
+        List<SessionRecord> history = new ArrayList<>();
     }
 
     public record SessionSummary(long lengthMs, long received, long sent, int players) {
@@ -53,6 +67,7 @@ public final class PaymentLedger {
         }
         if (data.allTime == null) data.allTime = new LinkedHashMap<>();
         if (data.session == null) data.session = new LinkedHashMap<>();
+        if (data.history == null) data.history = new ArrayList<>();
         if (data.sessionStart <= 0) data.sessionStart = System.currentTimeMillis();
     }
 
@@ -65,10 +80,10 @@ public final class PaymentLedger {
         }
     }
 
-    /** Logs a payment to both the all-time ledger and the current session. */
+    /** Logs a payment to the all-time ledger, and to the session if one is running. */
     public static void record(String player, long paidYou, long youPaid) {
         add(data.allTime, player, paidYou, youPaid);
-        add(data.session, player, paidYou, youPaid);
+        if (data.sessionActive) add(data.session, player, paidYou, youPaid);
         save();
     }
 
@@ -89,21 +104,47 @@ public final class PaymentLedger {
         return new ArrayList<>((session ? data.session : data.allTime).values());
     }
 
-    public static long sessionMillis() { return System.currentTimeMillis() - data.sessionStart; }
+    public static boolean isSessionActive() { return data.sessionActive; }
+    public static long sessionStartTime() { return data.sessionStart; }
+    public static List<SessionRecord> history() { return new ArrayList<>(data.history); }
+
+    /** Running time while active; frozen at the final length once ended. */
+    public static long sessionMillis() {
+        return (data.sessionActive ? System.currentTimeMillis() : data.sessionEnd) - data.sessionStart;
+    }
     public static long lastSessionLength() { return data.lastSessionLength; }
     public static long lastSessionProfit() { return data.lastSessionProfit; }
 
-    /** Ends the current session, keeps a short summary, and starts a fresh timer. */
+    /** Stops the session: freezes the timer and keeps its numbers visible until a new one starts. */
     public static SessionSummary endSession() {
         long in = 0, out = 0;
         for (Entry e : data.session.values()) { in += e.paidYou; out += e.youPaid; }
+        data.sessionEnd = System.currentTimeMillis();
+        data.sessionActive = false;
         SessionSummary s = new SessionSummary(sessionMillis(), in, out, data.session.size());
         data.lastSessionLength = s.lengthMs();
         data.lastSessionProfit = s.profit();
-        data.session = new LinkedHashMap<>();
-        data.sessionStart = System.currentTimeMillis();
+
+        SessionRecord r = new SessionRecord();
+        r.start = data.sessionStart;
+        r.end = data.sessionEnd;
+        r.received = in;
+        r.sent = out;
+        r.players = s.players();
+        data.history.add(0, r);                       // newest first
+        while (data.history.size() > 100) data.history.remove(data.history.size() - 1);
+
         save();
         return s;
+    }
+
+    /** Starts a fresh session with an empty ledger and a new timer. */
+    public static void startSession() {
+        data.session = new LinkedHashMap<>();
+        data.sessionStart = System.currentTimeMillis();
+        data.sessionEnd = 0;
+        data.sessionActive = true;
+        save();
     }
 
     public static String formatDuration(long ms) {
