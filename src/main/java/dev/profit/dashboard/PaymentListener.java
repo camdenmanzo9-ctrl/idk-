@@ -57,5 +57,4 @@ public final class PaymentListener {
 
     public static void chat(String msg, ChatFormatting color) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) mc.player.displayClientMessage(Component.literal("[Bettors] " + msg).withStyle(color), false);    }
-}
+        if (mc.player != null) mc.player.sendSystemMessage(Component.literal("[Bettors] " + msg).withStyle(color));    }}
