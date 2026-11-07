@@ -26,6 +26,10 @@ public class DashboardScreen extends Screen {
     private long confirmUntil = 0;
     private Button endButton, closeButton, sessionScope, allScope;
     private final java.util.Map<Button, Tab> tabButtons = new java.util.LinkedHashMap<>();
+    private final java.util.Map<Button, Integer> deleteButtons = new java.util.LinkedHashMap<>();
+    private Button clearAllButton;
+    private int pendingDelete = -2;      // history index waiting for a 2nd click, -1 = "clear all"
+    private long pendingUntil = 0;
 
     public DashboardScreen() {
         super(Component.literal("Bettors Dashboard"));
@@ -51,11 +55,50 @@ public class DashboardScreen extends Screen {
                 .bounds(6, height - 52, SIDE - 12, 20).build());
         closeButton = addRenderableWidget(Button.builder(Component.literal("Close"), b -> onClose())
                 .bounds(6, height - 28, SIDE - 12, 20).build());
+
+        deleteButtons.clear();
+        clearAllButton = null;
+        if (tab == Tab.SESSIONS) addSessionButtons();
+    }
+
+    // Same layout math as drawSessions(), so the buttons line up with the rows.
+    private void addSessionButtons() {
+        int cx = SIDE + 10, cw = width - cx - 8;
+        int py = 90, ph = height - 8 - py, hy = py + 22, rowsTop = hy + 13, rowH = 12;
+        int visible = Math.max(1, (py + ph - 6 - rowsTop) / rowH);
+        int size = PaymentLedger.history().size();
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, size - visible)));
+
+        if (size > 0) {
+            int bx = cx + 6 + font.width("PAST SESSIONS") + 10;
+            clearAllButton = addRenderableWidget(Button.builder(Component.literal("Clear all"),
+                    b -> confirmThen(-1, PaymentLedger::clearHistory)).bounds(bx, py + 4, 52, 13).build());
+        }
+        for (int i = 0; i < visible && scroll + i < size; i++) {
+            final int idx = scroll + i;
+            Button b = addRenderableWidget(Button.builder(Component.literal("Del"),
+                    btn -> confirmThen(idx, () -> PaymentLedger.deleteSession(idx)))
+                    .bounds(cx + cw - 38, rowsTop + i * rowH - 2, 32, 12).build());
+            deleteButtons.put(b, idx);
+        }
+    }
+
+    /** First click arms it for 3 seconds, second click does it. */
+    private void confirmThen(int key, Runnable action) {
+        long now = System.currentTimeMillis();
+        if (pendingDelete == key && now < pendingUntil) {
+            pendingDelete = -2;
+            action.run();
+            rebuildWidgets();
+        } else {
+            pendingDelete = key;
+            pendingUntil = now + 3000;
+        }
     }
 
     private void addTab(String label, Tab t, int i) {
         Button b = addRenderableWidget(Button.builder(Component.literal(label),
-                btn -> { tab = t; scroll = 0; }).bounds(6, 44 + i * 24, SIDE - 12, 20).build());
+                btn -> { tab = t; scroll = 0; pendingDelete = -2; rebuildWidgets(); }).bounds(6, 44 + i * 24, SIDE - 12, 20).build());
         tabButtons.put(b, t);
     }
 
@@ -91,6 +134,7 @@ public class DashboardScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
 
+        if (pendingDelete != -2 && System.currentTimeMillis() > pendingUntil) pendingDelete = -2;
         if (confirmUntil != 0 && System.currentTimeMillis() > confirmUntil) {
             confirmUntil = 0;
             endButton.setMessage(Component.literal(sessionLabel()));
@@ -114,7 +158,7 @@ public class DashboardScreen extends Screen {
             long p = PaymentLedger.lastSessionProfit();
             g.text(font, "LAST SESSION", 12, sy - 28, MUTED, false);
             g.text(font, PaymentLedger.formatDurationShort(PaymentLedger.lastSessionLength()) + "  "
-                    + (p >= 0 ? "+" : "") + Money.format(p), 12, sy - 17, p >= 0 ? GOLD : RED, false);
+                    + (p >= 0 ? "+" : "") + Money.format(p), 12, sy - 17, p >= 0 ? GREEN : RED, false);
         }
         g.fill(SIDE, 0, SIDE + 1, height, LINE);
 
@@ -135,7 +179,7 @@ public class DashboardScreen extends Screen {
             case DASHBOARD -> drawDashboard(g, list, cx, cw);
             case PLAYERS -> drawLedger(g, list, cx, cw);
             case PAID_YOU -> drawPaidYou(g, list, cx, cw);
-            case SESSIONS -> drawSessions(g, cx, cw);
+            case SESSIONS -> drawSessions(g, cx, cw, mouseX, mouseY);
         }
     }
 
@@ -209,67 +253,87 @@ public class DashboardScreen extends Screen {
     // ---------------- Dashboard tab ----------------
 
     private void drawDashboard(GuiGraphicsExtractor g, List<Entry> list, int cx, int cw) {
+        // Everything here is from YOUR side: + means you won from that player, - means you lost to them.
         long paid = 0, sent = 0, up = 0, down = 0;
+        int upCount = 0, downCount = 0;
         for (Entry e : list) {
             paid += e.paidYou;
             sent += e.youPaid;
-            long n = e.net();
-            if (n > 0) up += n; else down -= n;
+            long yours = -e.net();
+            if (yours > 0) { up += yours; upCount++; }
+            else if (yours < 0) { down -= yours; downCount++; }
         }
+        long net = up - down;
 
         int y = 38, gap = 6, cardW = (cw - gap * 4) / 5;
-        card(g, cx, y, cardW, "PLAYERS", String.valueOf(list.size()), sessionView ? "THIS SESSION" : "ALL TRACKED", LINE, GOLD);
-        card(g, cx + (cardW + gap), y, cardW, "PAID YOU", Money.format(paid), "RECEIVED", GOLD, GOLD);
-        card(g, cx + (cardW + gap) * 2, y, cardW, "YOU PAID", Money.format(sent), "SENT", RED, RED);
-        card(g, cx + (cardW + gap) * 3, y, cardW, "TOTAL UP", Money.format(up), "NET THEY WON", GOLD, GOLD);
-        card(g, cx + (cardW + gap) * 4, y, cardW, "TOTAL DOWN", Money.format(down), "NET YOU WON", RED, RED);
+        card(g, cx, y, cardW, "PLAYERS", String.valueOf(list.size()), sessionView ? "this session" : "all time", 0, TEXT);
+        card(g, cx + (cardW + gap), y, cardW, "PAID YOU", Money.format(paid), "received", 0, TEXT);
+        card(g, cx + (cardW + gap) * 2, y, cardW, "YOU PAID", Money.format(sent), "sent", 0, TEXT);
+        card(g, cx + (cardW + gap) * 3, y, cardW, "YOU'RE UP", Money.format(up),
+                "from " + upCount + (upCount == 1 ? " player" : " players"), 0, GREEN);
+        card(g, cx + (cardW + gap) * 4, y, cardW, "YOU'RE DOWN", Money.format(down),
+                "net " + signed(net), 0, RED);
 
+        int by = 90, bh = height - 8 - by;
         if (list.isEmpty()) {
-            emptyState(g, cx, 90, cw, height - 8 - 90, "No payments yet",
+            emptyState(g, cx, by, cw, bh, "No payments yet",
                     "Payments show up here automatically when someone pays you or you pay them.",
                     "Type /bettors debug to check they're being picked up.");
             return;
         }
-        int chartY = 90;
-        int chartH = Math.max(50, (height - 8 - chartY) * 45 / 100);
-        panel(g, cx, chartY, cw, chartH, 0);
-        g.text(font, "PLAYER NET BY RANK", cx + 6, chartY + 5, TEXT, false);
-        g.text(font, "bettors ordered by net", cx + 14 + font.width("PLAYER NET BY RANK"), chartY + 5, MUTED, false);
-        drawChart(g, list, cx + 6, chartY + 18, cw - 12, chartH - 24);
+        if (bh < 40) return;
 
-        int by = chartY + chartH + 6, bh = height - 8 - by;
-        if (bh < 34) return;
-        int lw = cw * 3 / 5 - 3, rx = cx + lw + 6, rw = cx + cw - rx;
+        int lw = cw * 58 / 100, rx = cx + lw + 6, rw = cx + cw - rx;
 
-        // Snapshot (left)
+        // Left: every player's net as a bar (green right = you won, red left = you lost)
         panel(g, cx, by, lw, bh, 0);
-        g.text(font, "PLAYER NET SNAPSHOT", cx + 6, by + 5, TEXT, false);
-        int hy = by + 18, paidX = cx + lw * 55 / 100, right = cx + lw - 6;
-        g.text(font, "PLAYER", cx + 6, hy, MUTED, false);
-        g.text(font, "PAID YOU", paidX, hy, MUTED, false);
-        rightText(g, "NET", right, hy, MUTED);
+        g.text(font, "PLAYERS", cx + 8, by + 8, TEXT, false);
+        g.text(font, "your net per player", cx + 14 + font.width("PLAYERS"), by + 8, MUTED, false);
 
-        List<Entry> byPaid = new ArrayList<>(list);
-        byPaid.sort(Comparator.comparingLong((Entry e) -> e.paidYou).reversed());
-        int rowsTop = hy + 12, rows = Math.max(0, (by + bh - 4 - rowsTop) / 11);
-        for (int i = 0; i < Math.min(rows, byPaid.size()); i++) {
-            Entry e = byPaid.get(i);
-            int ry = rowsTop + i * 11;
-            g.text(font, fit((i + 1) + ". " + e.name, paidX - cx - 12), cx + 6, ry, TEXT, false);
-            g.text(font, Money.format(e.paidYou), paidX, ry, GOLD, false);
-            long n = e.net();
-            rightText(g, (n > 0 ? "+" : "") + Money.format(n), right, ry, netColor(n));
+        List<Entry> s = new ArrayList<>(list);
+        s.sort(Comparator.comparingLong(Entry::net)); // biggest wins for you first
+        long maxAbs = 1;
+        for (Entry e : s) maxAbs = Math.max(maxAbs, Math.abs(e.net()));
+
+        int rowsTop = by + 26, rowH = 14, visible = Math.max(1, (by + bh - 6 - rowsTop) / rowH);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, s.size() - visible)));
+        int nameW = lw * 30 / 100, valW = 64;
+        int barL = cx + 8 + nameW, barR = cx + lw - 12 - valW, mid = (barL + barR) / 2, half = (barR - barL) / 2;
+        int shown = Math.min(visible, s.size() - scroll);
+        g.fill(mid, rowsTop - 3, mid + 1, rowsTop + shown * rowH - 4, LINE);
+        for (int i = 0; i < shown; i++) {
+            Entry e = s.get(scroll + i);
+            int ry = rowsTop + i * rowH;
+            long yours = -e.net();
+            g.text(font, fit(e.name, nameW - 6), cx + 8, ry, TEXT, false);
+            int len = (int) Math.max(yours == 0 ? 0 : 1, half * (double) Math.abs(yours) / maxAbs);
+            if (yours > 0) g.fill(mid + 1, ry, mid + 1 + len, ry + 7, GREEN);
+            else if (yours < 0) g.fill(mid - len, ry, mid, ry + 7, RED);
+            rightText(g, signed(yours), cx + lw - 8, ry, yourColor(yours));
         }
 
-        // Top up / top down (right)
-        panel(g, rx, by, rw, bh, 0);
-        int half = rw / 2;
-        List<Entry> ups = new ArrayList<>(), downs = new ArrayList<>();
-        for (Entry e : list) { if (e.net() > 0) ups.add(e); else if (e.net() < 0) downs.add(e); }
-        ups.sort(Comparator.comparingLong(Entry::net).reversed());
-        downs.sort(Comparator.comparingLong(Entry::net));
-        topList(g, "TOP UP", ups, rx + 6, by + 5, half - 10, bh, GOLD);
-        topList(g, "TOP DOWN", downs, rx + half + 4, by + 5, half - 10, bh, RED);
+        // Right: top 5 each way
+        int top = bh / 2;
+        List<Entry> won = new ArrayList<>(), lost = new ArrayList<>();
+        for (Entry e : list) { if (e.net() < 0) won.add(e); else if (e.net() > 0) lost.add(e); }
+        won.sort(Comparator.comparingLong(Entry::net));
+        lost.sort(Comparator.comparingLong(Entry::net).reversed());
+        listSection(g, "YOU WON MOST FROM", won, rx, by, rw, top - 3, GREEN);
+        listSection(g, "YOU LOST MOST TO", lost, rx, by + top + 3, rw, bh - top - 3, RED);
+    }
+
+    private void listSection(GuiGraphicsExtractor g, String title, List<Entry> list, int x, int y, int w, int h, int color) {
+        panel(g, x, y, w, h, 0);
+        g.text(font, title, x + 8, y + 8, color, false);
+        int rows = Math.max(0, Math.min(5, (h - 28) / 12));
+        if (list.isEmpty()) { g.text(font, "Nobody yet", x + 8, y + 24, MUTED, false); return; }
+        for (int i = 0; i < Math.min(rows, list.size()); i++) {
+            Entry e = list.get(i);
+            int ry = y + 24 + i * 12;
+            String amt = Money.format(Math.abs(e.net()));
+            g.text(font, fit(e.name, w - 24 - font.width(amt)), x + 8, ry, TEXT, false);
+            rightText(g, amt, x + w - 8, ry, color);
+        }
     }
 
     private void topList(GuiGraphicsExtractor g, String title, List<Entry> list, int x, int y, int w, int h, int color) {
@@ -285,7 +349,7 @@ public class DashboardScreen extends Screen {
     }
 
     private void card(GuiGraphicsExtractor g, int x, int y, int w, String label, String value, String sub, int accent, int valueColor) {
-        panel(g, x, y, w, 46, accent);
+        panel(g, x, y, w, 46, 0);
         g.text(font, fit(label, w - 12), x + 6, y + 7, MUTED, false);
         bigText(g, fit(value, w - 12), x + 6, y + 19, valueColor, w - 12);
         g.text(font, fit(sub, w - 12), x + 6, y + 35, MUTED, false);
@@ -348,7 +412,7 @@ public class DashboardScreen extends Screen {
         g.text(font, "PLAYER", cx + 6, hy, MUTED, false);
         g.text(font, "PAID YOU", paidX, hy, MUTED, false);
         g.text(font, "YOU PAID", sentX, hy, MUTED, false);
-        rightText(g, "NET ON YOU", right, hy, MUTED);
+        rightText(g, "YOUR NET", right, hy, MUTED);
 
         List<Entry> s = new ArrayList<>(list);
         s.sort(Comparator.comparingLong(Entry::volume).reversed());
@@ -361,15 +425,14 @@ public class DashboardScreen extends Screen {
             int ry = rowsTop + i * rowH;
             if (i % 2 == 0) g.fill(cx + 4, ry - 2, cx + cw - 4, ry + 10, STRIPE);
             g.text(font, fit((idx + 1) + ". " + e.name, paidX - cx - 12), cx + 6, ry, TEXT, false);
-            g.text(font, Money.format(e.paidYou), paidX, ry, GOLD, false);
-            g.text(font, Money.format(e.youPaid), sentX, ry, RED, false);
-            long n = e.net();
-            String net = n > 0 ? "UP " + Money.format(n) : n < 0 ? "DOWN " + Money.format(-n) : "EVEN $0";
-            rightText(g, net, right, ry, netColor(n));
+            g.text(font, Money.format(e.paidYou), paidX, ry, TEXT, false);
+            g.text(font, Money.format(e.youPaid), sentX, ry, TEXT, false);
+            long yours = -e.net();
+            rightText(g, signed(yours), right, ry, yourColor(yours));
         }
         if (s.isEmpty()) g.text(font, "No payments logged yet", cx + 6, rowsTop, MUTED, false);
 
-        String legend = "UP = they received more from you  ·  DOWN = they paid you more";
+        String legend = "+ you won from them   ·   - you lost to them";
         int legendW = Math.min(font.width(legend), cw - 12);
         g.text(font, fit(legend, cw - 12), cx + (cw - legendW) / 2, py + ph - 11, MUTED, false);
     }
@@ -415,7 +478,7 @@ public class DashboardScreen extends Screen {
         return java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).format(WHEN);
     }
 
-    private void drawSessions(GuiGraphicsExtractor g, int cx, int cw) {
+    private void drawSessions(GuiGraphicsExtractor g, int cx, int cw, int mouseX, int mouseY) {
         boolean active = PaymentLedger.isSessionActive();
         List<Entry> cur = PaymentLedger.entries(true);
         long in = 0, out = 0;
@@ -425,13 +488,13 @@ public class DashboardScreen extends Screen {
         // Current session cards
         int y = 38, gap = 6, cardW = (cw - gap * 4) / 5;
         card(g, cx, y, cardW, "STATUS", active ? "RUNNING" : "ENDED",
-                "since " + when(PaymentLedger.sessionStartTime()), active ? GREEN : RED, active ? GOLD : RED);
+                "since " + when(PaymentLedger.sessionStartTime()), active ? GREEN : RED, active ? GREEN : RED);
         card(g, cx + (cardW + gap), y, cardW, "LENGTH", PaymentLedger.formatDuration(PaymentLedger.sessionMillis()),
-                active ? "LIVE" : "FINAL", LINE, TEXT);
-        card(g, cx + (cardW + gap) * 2, y, cardW, "RECEIVED", Money.format(in), cur.size() + " PLAYERS", GOLD, GOLD);
-        card(g, cx + (cardW + gap) * 3, y, cardW, "SENT", Money.format(out), "PAID OUT", RED, RED);
+                active ? "live" : "final", LINE, TEXT);
+        card(g, cx + (cardW + gap) * 2, y, cardW, "RECEIVED", Money.format(in), cur.size() + (cur.size() == 1 ? " player" : " players"), 0, TEXT);
+        card(g, cx + (cardW + gap) * 3, y, cardW, "SENT", Money.format(out), "paid out", 0, TEXT);
         card(g, cx + (cardW + gap) * 4, y, cardW, "YOUR PROFIT", (profit >= 0 ? "+" : "") + Money.format(profit),
-                "THIS SESSION", profit >= 0 ? GOLD : RED, profit >= 0 ? GOLD : RED);
+                "this session", 0, profit >= 0 ? GREEN : RED);
 
         // History table
         List<PaymentLedger.SessionRecord> hist = PaymentLedger.history();
@@ -443,10 +506,11 @@ public class DashboardScreen extends Screen {
         for (PaymentLedger.SessionRecord r : hist) { total += r.profit(); best = Math.max(best, r.profit()); }
         String summary = hist.isEmpty() ? "NONE YET" : hist.size() + " SESSIONS  ·  TOTAL "
                 + (total >= 0 ? "+" : "") + Money.format(total) + "  ·  BEST +" + Money.format(Math.max(0, best));
-        rightText(g, fit(summary, cw - 110), cx + cw - 6, py + 7, MUTED);
+        int titleEnd = cx + 6 + font.width("PAST SESSIONS") + 10 + (hist.isEmpty() ? 0 : 62);
+        rightText(g, fit(summary, cx + cw - 6 - titleEnd), cx + cw - 6, py + 7, MUTED);
 
         int lenX = cx + cw * 30 / 100, inX = cx + cw * 46 / 100, outX = cx + cw * 62 / 100,
-                plX = cx + cw * 76 / 100, right = cx + cw - 6, hy = py + 22;
+                plX = cx + cw * 76 / 100, right = cx + cw - 44, hy = py + 22;
         g.text(font, "STARTED", cx + 6, hy, MUTED, false);
         g.text(font, "LENGTH", lenX, hy, MUTED, false);
         g.text(font, "RECEIVED", inX, hy, MUTED, false);
@@ -466,9 +530,21 @@ public class DashboardScreen extends Screen {
             g.text(font, Money.format(r.sent), outX, ry, RED, false);
             g.text(font, String.valueOf(r.players), plX, ry, TEXT, false);
             long p = r.profit();
-            rightText(g, (p >= 0 ? "+" : "") + Money.format(p), right, ry, p >= 0 ? GOLD : RED);
+            rightText(g, (p >= 0 ? "+" : "") + Money.format(p), right, ry, p >= 0 ? GREEN : RED);
         }
         if (hist.isEmpty()) g.text(font, "Ended sessions show up here", cx + 6, rowsTop, MUTED, false);
+
+        for (var e : deleteButtons.entrySet()) smallButton(g, e.getKey(), pendingDelete == e.getValue(), mouseX, mouseY);
+        if (clearAllButton != null) smallButton(g, clearAllButton, pendingDelete == -1, mouseX, mouseY);
+    }
+
+    private void smallButton(GuiGraphicsExtractor g, Button b, boolean armed, int mx, int my) {
+        int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+        boolean hover = over(b, mx, my);
+        g.fill(x, y, x + w, y + h, armed ? RED : hover ? HOVER : PANEL);
+        outline(g, x, y, w, h, armed || hover ? RED : LINE);
+        String s = armed ? "Sure?" : b.getMessage().getString();
+        g.text(font, s, x + (w - font.width(s)) / 2, y + (h - 8) / 2 + 1, armed ? DARK : hover ? RED : MUTED, false);
     }
 
     // ---------------- helpers ----------------
@@ -476,7 +552,14 @@ public class DashboardScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         scroll = Math.max(0, scroll - (int) Math.signum(scrollY) * 2);
+        if (tab == Tab.SESSIONS) rebuildWidgets();
         return true;
+    }
+
+    private static int yourColor(long v) { return v > 0 ? GREEN : v < 0 ? RED : MUTED; }
+
+    private static String signed(long v) {
+        return v == 0 ? "$0" : (v > 0 ? "+" : "-") + Money.format(Math.abs(v));
     }
 
     private static int netColor(long n) { return n > 0 ? GOLD : n < 0 ? RED : MUTED; }
