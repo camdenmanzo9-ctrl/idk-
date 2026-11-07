@@ -108,6 +108,20 @@ public final class PaymentLedger {
     public static long sessionStartTime() { return data.sessionStart; }
     public static List<SessionRecord> history() { return new ArrayList<>(data.history); }
 
+    public static void deleteSession(int index) {
+        if (index >= 0 && index < data.history.size()) {
+            data.history.remove(index);
+            save();
+        }
+    }
+
+    public static void clearHistory() {
+        data.history.clear();
+        data.lastSessionLength = -1;
+        data.lastSessionProfit = 0;
+        save();
+    }
+
     /** Running time while active; frozen at the final length once ended. */
     public static long sessionMillis() {
         return (data.sessionActive ? System.currentTimeMillis() : data.sessionEnd) - data.sessionStart;

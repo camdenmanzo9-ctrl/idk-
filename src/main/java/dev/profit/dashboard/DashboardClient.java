@@ -6,8 +6,13 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import org.lwjgl.glfw.GLFW;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
@@ -15,9 +20,17 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 public class DashboardClient implements ClientModInitializer {
     private static boolean openNextTick = false;
 
+    private static final KeyMapping.Category CATEGORY =
+            KeyMapping.Category.register(Identifier.fromNamespaceAndPath("bettors_dashboard", "main"));
+    private static KeyMapping openKey;
+
     @Override
     public void onInitializeClient() {
         PaymentLedger.load();
+
+        // Default key: B. Change it in Options > Controls > Key Binds > Bettors Dashboard.
+        openKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.bettors_dashboard.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, CATEGORY));
 
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (!overlay) PaymentListener.handle(message.getString());
@@ -25,6 +38,9 @@ public class DashboardClient implements ClientModInitializer {
 
         // Commands close the chat screen after running, so the menu opens on the next tick.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (openKey.consumeClick()) {
+                if (client.screen == null) openNextTick = true;
+            }
             if (openNextTick) {
                 openNextTick = false;
                 client.setScreen(new DashboardScreen());
@@ -41,6 +57,11 @@ public class DashboardClient implements ClientModInitializer {
                     }
                     PaymentLedger.endSession();
                     ctx.getSource().sendFeedback(Component.literal("[Bettors] Session ended."));
+                    return 1;
+                }))
+                .then(literal("clearsessions").executes(ctx -> {
+                    PaymentLedger.clearHistory();
+                    ctx.getSource().sendFeedback(Component.literal("[Bettors] Session history cleared."));
                     return 1;
                 }))
                 .then(literal("startsession").executes(ctx -> {
