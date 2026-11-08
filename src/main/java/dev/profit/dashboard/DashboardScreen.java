@@ -18,13 +18,28 @@ public class DashboardScreen extends Screen {
     private static boolean sessionView = false;
 
     private static final int SIDE = 118;
-    private static final int BG = 0xFF0B0E11, SIDE_BG = 0xFF0F1317, PANEL = 0xFF13181C, STRIPE = 0xFF171D22,
-            LINE = 0xFF232A31, HOVER = 0xFF1A2026, SELECT = 0xFF1E252C, TEXT = 0xFFE8E8E8, MUTED = 0xFF7F868D,
-            GOLD = 0xFFF2C14E, RED = 0xFFE8475A, GREEN = 0xFF3DBE7A, DARK = 0xFF0B0E11;
+    private static int BG, SIDE_BG, PANEL, STRIPE, LINE, HOVER, SELECT, TEXT, MUTED, GOLD, RED, GREEN, DARK;
+    private static boolean xmas;
+
+    /** Classic = dark gray. Christmas = pine green, snow white, candy-cane red, gold, with falling snow. */
+    private static void applyTheme(boolean christmas) {
+        xmas = christmas;
+        if (christmas) {
+            BG = 0xFF0C1A14; SIDE_BG = 0xFF0A1511; PANEL = 0xFF10241B; STRIPE = 0xFF142C21;
+            LINE = 0xFF214232; HOVER = 0xFF173326; SELECT = 0xFF1C3A2C; TEXT = 0xFFF4F1E8; MUTED = 0xFF8FA89A;
+            GOLD = 0xFFF5C542; RED = 0xFFE5484D; GREEN = 0xFF4ADE80; DARK = 0xFF0C1A14;
+        } else {
+            BG = 0xFF0B0E11; SIDE_BG = 0xFF0F1317; PANEL = 0xFF13181C; STRIPE = 0xFF171D22;
+            LINE = 0xFF232A31; HOVER = 0xFF1A2026; SELECT = 0xFF1E252C; TEXT = 0xFFE8E8E8; MUTED = 0xFF7F868D;
+            GOLD = 0xFFF2C14E; RED = 0xFFE8475A; GREEN = 0xFF3DBE7A; DARK = 0xFF0B0E11;
+        }
+    }
+
+    static { applyTheme(false); }
 
     private int scroll = 0;
     private long confirmUntil = 0;
-    private Button endButton, closeButton, sessionScope, allScope;
+    private Button endButton, closeButton, sessionScope, allScope, themeButton;
     private final java.util.Map<Button, Tab> tabButtons = new java.util.LinkedHashMap<>();
     private final java.util.Map<Button, Integer> deleteButtons = new java.util.LinkedHashMap<>();
     private Button clearAllButton;
@@ -40,6 +55,7 @@ public class DashboardScreen extends Screen {
 
     @Override
     protected void init() {
+        applyTheme(PaymentLedger.isChristmas());
         tabButtons.clear();
         addTab("Dashboard", Tab.DASHBOARD, 0);
         addTab("Players", Tab.PLAYERS, 1);
@@ -50,6 +66,11 @@ public class DashboardScreen extends Screen {
                 b -> { sessionView = true; scroll = 0; }).bounds(width - 136, 6, 64, 18).build());
         allScope = addRenderableWidget(Button.builder(Component.literal("All Time"),
                 b -> { sessionView = false; scroll = 0; }).bounds(width - 72, 6, 64, 18).build());
+
+        themeButton = addRenderableWidget(Button.builder(Component.literal("Theme"), b -> {
+            PaymentLedger.setChristmas(!xmas);
+            applyTheme(!xmas);
+        }).bounds(6, 44 + 4 * 24 + 6, SIDE - 12, 16).build());
 
         endButton = addRenderableWidget(Button.builder(Component.literal(sessionLabel()), b -> onEndSession())
                 .bounds(6, height - 52, SIDE - 12, 20).build());
@@ -126,8 +147,23 @@ public class DashboardScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         g.fill(0, 0, width, height, BG);
+        if (xmas) drawSnow(g);
         g.fill(0, 0, SIDE, height, SIDE_BG);
         g.fill(SIDE, 0, SIDE + 1, height, LINE);
+    }
+
+    // Gentle falling snow behind the panels (Christmas theme only)
+    private void drawSnow(GuiGraphicsExtractor g) {
+        double t = (System.currentTimeMillis() % 1_000_000L) / 1000.0;
+        int area = Math.max(1, width - SIDE);
+        for (int i = 0; i < 80; i++) {
+            int h1 = (i * 73856093) ^ 0x5bd1e995, h2 = (i * 19349663) ^ 0x27d4eb2d;
+            double speed = 6 + Math.abs(h2 % 14);
+            int size = (Math.abs(h1) % 5 == 0) ? 2 : 1;
+            int x = SIDE + Math.abs(h1 % area) + (int) Math.round(Math.sin(t * 0.6 + i) * 3);
+            int y = (int) ((Math.abs(h2 % 1000) + t * speed) % (height + 4)) - 2;
+            g.fill(x, y, x + size, y + size, size == 2 ? 0xDDFFFFFF : 0x99FFFFFF);
+        }
     }
 
     @Override
@@ -143,8 +179,9 @@ public class DashboardScreen extends Screen {
         // Flat buttons drawn over the vanilla ones (the vanilla ones still handle the clicks)
         g.fill(0, 0, SIDE, height, SIDE_BG);
         g.text(font, "BETTORS", 12, 12, GOLD, false);
-        g.text(font, "Payments", 12, 23, MUTED, false);
+        g.text(font, xmas ? "Merry Christmas" : "Payments", 12, 23, xmas ? RED : MUTED, false);
         for (var e : tabButtons.entrySet()) navButton(g, e.getKey(), e.getValue() == tab, mouseX, mouseY);
+        themeToggle(g, themeButton, mouseX, mouseY);
 
         boolean active = PaymentLedger.isSessionActive();
         boolean confirming = confirmUntil != 0;
@@ -154,7 +191,7 @@ public class DashboardScreen extends Screen {
         int sy = height - 82;
         g.text(font, active ? "SESSION" : "SESSION ENDED", 12, sy, active ? MUTED : RED, false);
         g.text(font, PaymentLedger.formatDuration(PaymentLedger.sessionMillis()), 12, sy + 11, active ? TEXT : MUTED, false);
-        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 4 * 24 + 4) {
+        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 4 * 24 + 26) {
             long p = PaymentLedger.lastSessionProfit();
             g.text(font, "LAST SESSION", 12, sy - 28, MUTED, false);
             g.text(font, PaymentLedger.formatDurationShort(PaymentLedger.lastSessionLength()) + "  "
@@ -172,7 +209,12 @@ public class DashboardScreen extends Screen {
         String sText = (active ? "Session " : "Session ended ") + PaymentLedger.formatDuration(PaymentLedger.sessionMillis());
         g.text(font, sText, tx, 10, active ? MUTED : RED, false);
         toggle(g, sessionScope, allScope, sessionView, mouseX, mouseY);
-        g.fill(SIDE + 1, 30, width, 31, LINE);
+        if (xmas) {
+            for (int sx = SIDE + 1; sx < width; sx += 6) g.fill(sx, 30, Math.min(width, sx + 3), 32, RED);
+            for (int sx = SIDE + 4; sx < width; sx += 6) g.fill(sx, 30, Math.min(width, sx + 3), 32, 0xFFF4F1E8);
+        } else {
+            g.fill(SIDE + 1, 30, width, 31, LINE);
+        }
 
         List<Entry> list = PaymentLedger.entries(sessionView);
         switch (tab) {
@@ -195,6 +237,15 @@ public class DashboardScreen extends Screen {
         g.fill(x, y, x + w, y + h, selected ? SELECT : hover ? HOVER : SIDE_BG);
         if (selected) g.fill(x, y, x + 2, y + h, GOLD);
         g.text(font, b.getMessage().getString(), x + 10, y + (h - 8) / 2, selected || hover ? TEXT : MUTED, false);
+    }
+
+    private void themeToggle(GuiGraphicsExtractor g, Button b, int mx, int my) {
+        int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+        g.fill(x, y, x + w, y + h, over(b, mx, my) ? HOVER : SIDE_BG);
+        outline(g, x, y, w, h, LINE);
+        g.text(font, "Theme", x + 6, y + (h - 8) / 2, MUTED, false);
+        String v = xmas ? "Christmas" : "Classic";
+        g.text(font, v, x + w - 6 - font.width(v), y + (h - 8) / 2, xmas ? RED : TEXT, false);
     }
 
     private void actionButton(GuiGraphicsExtractor g, Button b, int color, boolean filled, int mx, int my) {

@@ -46,6 +46,7 @@ public final class PaymentLedger {
         long lastSessionLength = -1;
         long lastSessionProfit = 0;
         List<SessionRecord> history = new ArrayList<>();
+        String theme = "classic";
     }
 
     public record SessionSummary(long lengthMs, long received, long sent, int players) {
@@ -106,6 +107,13 @@ public final class PaymentLedger {
 
     public static boolean isSessionActive() { return data.sessionActive; }
     public static long sessionStartTime() { return data.sessionStart; }
+    public static boolean isChristmas() { return "christmas".equals(data.theme); }
+
+    public static void setChristmas(boolean on) {
+        data.theme = on ? "christmas" : "classic";
+        save();
+    }
+
     public static List<SessionRecord> history() { return new ArrayList<>(data.history); }
 
     public static void deleteSession(int index) {

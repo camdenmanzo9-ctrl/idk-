@@ -59,6 +59,9 @@ public class DashboardClient implements ClientModInitializer {
                     ctx.getSource().sendFeedback(Component.literal("[Bettors] Session ended."));
                     return 1;
                 }))
+                .then(literal("theme")
+                    .then(literal("christmas").executes(ctx -> { PaymentLedger.setChristmas(true); return 1; }))
+                    .then(literal("classic").executes(ctx -> { PaymentLedger.setChristmas(false); return 1; })))
                 .then(literal("clearsessions").executes(ctx -> {
                     PaymentLedger.clearHistory();
                     ctx.getSource().sendFeedback(Component.literal("[Bettors] Session history cleared."));
