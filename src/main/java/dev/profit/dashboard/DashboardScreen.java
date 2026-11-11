@@ -12,7 +12,7 @@ import java.util.List;
 
 /** Bettors payment dashboard: Dashboard / Players / Paid You, Session vs All Time, session timer + End Session. */
 public class DashboardScreen extends Screen {
-    private enum Tab { DASHBOARD, PLAYERS, PAID_YOU, SESSIONS }
+    private enum Tab { DASHBOARD, GRAPH, PLAYERS, PAID_YOU, SESSIONS }
 
     private static Tab tab = Tab.DASHBOARD;
     private static boolean sessionView = false;
@@ -50,6 +50,10 @@ public class DashboardScreen extends Screen {
     private final java.util.Map<Button, String> rowButtons = new java.util.LinkedHashMap<>();
     private final java.util.Map<Button, Long> rangeButtons = new java.util.LinkedHashMap<>();
     private Button backButton;
+
+    // Graph tab: -1 = this session, otherwise a time window in ms
+    private static long graphRange = -1;
+    private final java.util.Map<Button, Long> graphButtons = new java.util.LinkedHashMap<>();
     private int pendingDelete = -2;      // history index waiting for a 2nd click, -1 = "clear all"
     private long pendingUntil = 0;
 
@@ -65,9 +69,10 @@ public class DashboardScreen extends Screen {
         applyTheme(PaymentLedger.isChristmas());
         tabButtons.clear();
         addTab("Dashboard", Tab.DASHBOARD, 0);
-        addTab("Players", Tab.PLAYERS, 1);
-        addTab("Paid You", Tab.PAID_YOU, 2);
-        addTab("Sessions", Tab.SESSIONS, 3);
+        addTab("Graph", Tab.GRAPH, 1);
+        addTab("Players", Tab.PLAYERS, 2);
+        addTab("Paid You", Tab.PAID_YOU, 3);
+        addTab("Sessions", Tab.SESSIONS, 4);
 
         sessionScope = addRenderableWidget(Button.builder(Component.literal("Session"),
                 b -> { sessionView = true; scroll = 0; rebuildWidgets(); }).bounds(width - 136, 6, 64, 18).build());
@@ -77,7 +82,7 @@ public class DashboardScreen extends Screen {
         themeButton = addRenderableWidget(Button.builder(Component.literal("Theme"), b -> {
             PaymentLedger.setChristmas(!xmas);
             applyTheme(!xmas);
-        }).bounds(6, 44 + 4 * 24 + 6, SIDE - 12, 16).build());
+        }).bounds(6, 44 + 5 * 24 + 6, SIDE - 12, 16).build());
 
         endButton = addRenderableWidget(Button.builder(Component.literal(sessionLabel()), b -> onEndSession())
                 .bounds(6, height - 52, SIDE - 12, 20).build());
@@ -88,7 +93,9 @@ public class DashboardScreen extends Screen {
         clearAllButton = null;
         rowButtons.clear();
         rangeButtons.clear();
+        graphButtons.clear();
         backButton = null;
+        if (tab == Tab.GRAPH) addGraphButtons();
         if (tab == Tab.SESSIONS) addSessionButtons();
         if (tab == Tab.DASHBOARD) addDashboardRowButtons();
         if (tab == Tab.PLAYERS) {
@@ -144,6 +151,63 @@ public class DashboardScreen extends Screen {
         return mx >= x1 && mx < x2 && my >= y1 && my < y2;
     }
 
+    /** Clean running-net line: thin line, light shading, a quiet $0 line and one end label. pays: oldest first. */
+    private void drawNetGraph(GuiGraphicsExtractor g, List<PaymentLedger.Payment> pays, int x, int y, int w, int h) {
+        int n = pays.size() + 1;
+        long[] vals = new long[n];
+        long run = 0, min = 0, max = 0;
+        for (int i = 0; i < pays.size(); i++) {
+            run += pays.get(i).paidYou - pays.get(i).youPaid;
+            vals[i + 1] = run;
+            min = Math.min(min, run);
+            max = Math.max(max, run);
+        }
+        if (n < 3) {
+            g.text(font, "The graph fills in as payments come in", x, y + h / 2 - 4, MUTED, false);
+            return;
+        }
+        if (max == min) max = min + 1;
+        // a little headroom so the line never touches the edges
+        long pad = Math.max(1, (max - min) / 10);
+        final long fMax = max + pad, fMin = min - pad;
+
+        int gw = Math.max(10, w), endRoom = 70;           // space on the right for the current value
+        int lineW = Math.max(10, gw - endRoom);
+        int zy = y + (int) Math.round((double) fMax / (fMax - fMin) * (h - 1));
+        g.fill(x, zy, x + lineW, zy + 1, LINE);               // quiet $0 line
+        g.text(font, "$0", x + lineW + 6, zy - 4, MUTED, false);
+
+        int last = -1;
+        for (int px = 0; px < lineW; px++) {
+            double t = (double) px * (n - 1) / Math.max(1, lineW - 1);
+            int i0 = (int) Math.floor(t), i1 = Math.min(n - 1, i0 + 1);
+            double v = vals[i0] + (vals[i1] - vals[i0]) * (t - i0);
+            int yy = y + (int) Math.round((fMax - v) / (double) (fMax - fMin) * (h - 1));
+            int col = v >= 0 ? GREEN : RED;
+            g.fill(x + px, Math.min(yy, zy), x + px + 1, Math.max(yy, zy), (0x14 << 24) | (col & 0xFFFFFF));
+            int from = last < 0 ? yy : last;
+            g.fill(x + px, Math.min(yy, from), x + px + 1, Math.max(yy, from) + 1, col);
+            last = yy;
+        }
+
+        long now = vals[n - 1];
+        int ec = now >= 0 ? GREEN : RED;
+        g.fill(x + lineW - 2, last - 1, x + lineW + 1, last + 2, ec);   // end dot
+        int ly = Math.max(y, Math.min(y + h - 9, last - 4));
+        if (Math.abs(ly - (zy - 4)) < 10) ly = last < zy ? Math.max(y, zy - 16) : Math.min(y + h - 9, zy + 8);
+        g.text(font, signed(now), x + lineW + 6, ly, ec, false);
+    }
+
+    private List<PaymentLedger.Payment> dashGraphData() {
+        long since = sessionView ? PaymentLedger.sessionStartTime() : 0;
+        return PaymentLedger.paymentsSince(since);
+    }
+
+    /** Height of the dashboard graph; the lists start below it. Shared by drawing and click areas. */
+    private int dashGraphH() {
+        return Math.max(56, (height - 14 - 104) * 34 / 100);
+    }
+
     private void moreHint(GuiGraphicsExtractor g, int rightX, int y) {
         rightText(g, "scroll for more", rightX, y, MUTED);
     }
@@ -186,6 +250,56 @@ public class DashboardScreen extends Screen {
                     .bounds(cx + 4, rowsTop + i * rowH - 2, cw - 8, 12).build());
             rowButtons.put(b, name);
         }
+    }
+
+    private void addGraphButtons() {
+        int cx = SIDE + 16;
+        long day = 24L * 60 * 60 * 1000;
+        String[] labels = {"This session", "24 hours", "7 days", "30 days"};
+        long[] ranges = {-1, day, 7 * day, 30 * day};
+        int bx = cx;
+        for (int i = 0; i < 4; i++) {
+            final long r = ranges[i];
+            int w = font.width(labels[i]) + 16;
+            Button b = addRenderableWidget(Button.builder(Component.literal(labels[i]),
+                    btn -> graphRange = r).bounds(bx, 44, w, 16).build());
+            graphButtons.put(b, r);
+            bx += w + 4;
+        }
+    }
+
+    private void drawGraphTab(GuiGraphicsExtractor g, int cx, int cw, int mouseX, int mouseY) {
+        for (var e : graphButtons.entrySet()) {
+            Button b = e.getKey();
+            boolean on = e.getValue() == graphRange;
+            int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+            g.fill(x, y, x + w, y + h, on ? SELECT : over(b, mouseX, mouseY) ? HOVER : PANEL);
+            outline(g, x, y, w, h, on ? GOLD : LINE);
+            String t = b.getMessage().getString();
+            g.text(font, t, x + (w - font.width(t)) / 2, y + (h - 8) / 2, on ? GOLD : MUTED, false);
+        }
+
+        long since = graphRange < 0 ? PaymentLedger.sessionStartTime() : System.currentTimeMillis() - graphRange;
+        List<PaymentLedger.Payment> pays = PaymentLedger.paymentsSince(since);
+        long run = 0, high = 0, low = 0;
+        for (PaymentLedger.Payment p : pays) {
+            run += p.paidYou - p.youPaid;
+            high = Math.max(high, run);
+            low = Math.min(low, run);
+        }
+
+        int y = 70, gap = 10, cardW = (cw - gap * 3) / 4;
+        card(g, cx, y, cardW, run >= 0 ? "YOU'RE UP" : "YOU'RE DOWN", signed(run), "right now", 0, yourColor(run));
+        card(g, cx + (cardW + gap), y, cardW, "HIGHEST", signed(high), "best point", 0, yourColor(high));
+        card(g, cx + (cardW + gap) * 2, y, cardW, "LOWEST", signed(low), "worst point", 0, yourColor(low));
+        card(g, cx + (cardW + gap) * 3, y, cardW, "PAYMENTS", String.valueOf(pays.size()), "in this range", 0, TEXT);
+
+        int gy = 126, gh = height - 14 - gy;
+        if (gh < 40) return;
+        panel(g, cx, gy, cw, gh, 0);
+        g.text(font, "UP / DOWN", cx + 10, gy + 10, TEXT, false);
+        g.text(font, "your running net", cx + 16 + font.width("UP / DOWN"), gy + 10, MUTED, false);
+        drawNetGraph(g, pays, cx + 12, gy + 30, cw - 24, gh - 44);
     }
 
     private void addDetailButtons() {
@@ -327,7 +441,7 @@ public class DashboardScreen extends Screen {
         int sy = height - 82;
         g.text(font, active ? "SESSION" : "SESSION ENDED", 12, sy, active ? MUTED : RED, false);
         g.text(font, PaymentLedger.formatDuration(PaymentLedger.sessionMillis()), 12, sy + 11, active ? TEXT : MUTED, false);
-        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 4 * 24 + 26) {
+        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 5 * 24 + 26) {
             long p = PaymentLedger.lastSessionProfit();
             g.text(font, "LAST SESSION", 12, sy - 28, MUTED, false);
             g.text(font, PaymentLedger.formatDurationShort(PaymentLedger.lastSessionLength()) + "  "
@@ -355,6 +469,7 @@ public class DashboardScreen extends Screen {
         List<Entry> list = PaymentLedger.entries(sessionView);
         switch (tab) {
             case DASHBOARD -> drawDashboard(g, list, cx, cw, mouseX, mouseY);
+            case GRAPH -> drawGraphTab(g, cx, cw, mouseX, mouseY);
             case PLAYERS -> {
                 if (detailPlayer != null) drawPlayerDetail(g, cx, cw, mouseX, mouseY);
                 else drawLedger(g, list, cx, cw, mouseX, mouseY);
@@ -738,8 +853,17 @@ public class DashboardScreen extends Screen {
         card(g, cx + (cardW + gap) * 3, y, cardW, "PAYMENTS", String.valueOf(count),
                 detailRange == 0 ? "all time" : "in this range", 0, TEXT);
 
+        // up / down graph with this player for the chosen range
+        int gy = 174, gh = Math.max(56, (height - 14 - gy) * 40 / 100);
+        panel(g, cx, gy, cw, gh, 0);
+        g.text(font, "UP / DOWN", cx + 8, gy + 8, TEXT, false);
+        g.text(font, "your net with " + name, cx + 14 + font.width("UP / DOWN"), gy + 8, MUTED, false);
+        List<PaymentLedger.Payment> oldestFirst = new ArrayList<>(pays);
+        java.util.Collections.reverse(oldestFirst);
+        drawNetGraph(g, oldestFirst, cx + 8, gy + 22, cw - 16, gh - 30);
+
         // payment list
-        int py = 174, ph = height - 14 - py;
+        int py = gy + gh + 10, ph = height - 14 - py;
         if (ph < 30) return;
         panel(g, cx, py, cw, ph, 0);
         g.text(font, "PAYMENTS", cx + 8, py + 8, TEXT, false);

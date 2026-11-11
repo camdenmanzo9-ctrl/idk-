@@ -112,6 +112,13 @@ public final class PaymentLedger {
         save();
     }
 
+    /** All payments since a time, oldest first. */
+    public static List<Payment> paymentsSince(long since) {
+        List<Payment> out = new ArrayList<>();
+        for (Payment x : data.log) if (x.ts >= since) out.add(x);
+        return out;
+    }
+
     /** Payments with one player since a time, newest first. */
     public static List<Payment> paymentsFor(String player, long since) {
         List<Payment> out = new ArrayList<>();
