@@ -162,8 +162,8 @@ public class DashboardScreen extends Screen {
             min = Math.min(min, run);
             max = Math.max(max, run);
         }
-        if (n < 3) {
-            g.text(font, "The graph fills in as payments come in", x, y + h / 2 - 4, MUTED, false);
+        if (n < 2) {
+            g.text(font, "No payments in this range yet", x, y + h / 2 - 4, MUTED, false);
             return;
         }
         if (max == min) max = min + 1;
