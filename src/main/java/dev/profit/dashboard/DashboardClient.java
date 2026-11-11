@@ -8,6 +8,8 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
@@ -18,7 +20,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 public class DashboardClient implements ClientModInitializer {
-    private static boolean openNextTick = false;
+    private static boolean openNextTick = false, openSettingsNextTick = false;
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("bettors_dashboard", "main"));
@@ -27,6 +29,29 @@ public class DashboardClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         PaymentLedger.load();
+        Settings.load();
+
+        // Profit box + big-payment popup, drawn on top of the game
+        HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bettors_dashboard", "alerts"), (g, dt) -> Alerts.render(g));
+
+        // Recolor payment messages in chat (only changes how they look on your screen)
+        ClientReceiveMessageEvents.MODIFY_GAME.register((message, overlay) -> overlay ? message : Alerts.recolor(message));
+
+        // Big /pay: hold it and ask first. Nothing is sent unless you click Confirm.
+        ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
+            if (PayConfirmScreen.bypass) return true;
+            Settings s = Settings.S;
+            String[] a = command.trim().split("\\s+");
+            if (!s.payAsk || a.length < 3 || !a[0].equalsIgnoreCase("pay")) return true;
+            try {
+                long amount = Money.parse(a[2]);
+                if (amount < s.payFrom) return true;
+                PayConfirmScreen.pending = new PayConfirmScreen(command, a[1], amount, false);
+                return false;
+            } catch (Exception e) {
+                return true;
+            }
+        });
 
         // Default key: B. Change it in Options > Controls > Key Binds > Bettors Dashboard.
         openKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
@@ -45,6 +70,15 @@ public class DashboardClient implements ClientModInitializer {
                 openNextTick = false;
                 client.setScreen(new DashboardScreen());
             }
+            if (openSettingsNextTick) {
+                openSettingsNextTick = false;
+                client.setScreen(new SettingsScreen(null));
+            }
+            if (PayConfirmScreen.pending != null && client.screen == null) {
+                client.setScreen(PayConfirmScreen.pending);
+                PayConfirmScreen.pending = null;
+            }
+            Alerts.tick();
         });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
@@ -59,6 +93,7 @@ public class DashboardClient implements ClientModInitializer {
                     ctx.getSource().sendFeedback(Component.literal("[Bettors] Session ended."));
                     return 1;
                 }))
+                .then(literal("settings").executes(ctx -> { openSettingsNextTick = true; return 1; }))
                 .then(literal("theme")
                     .then(literal("christmas").executes(ctx -> { PaymentLedger.setChristmas(true); return 1; }))
                     .then(literal("classic").executes(ctx -> { PaymentLedger.setChristmas(false); return 1; })))

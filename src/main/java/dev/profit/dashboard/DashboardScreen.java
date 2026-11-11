@@ -79,10 +79,9 @@ public class DashboardScreen extends Screen {
         allScope = addRenderableWidget(Button.builder(Component.literal("All Time"),
                 b -> { sessionView = false; scroll = 0; rebuildWidgets(); }).bounds(width - 72, 6, 64, 18).build());
 
-        themeButton = addRenderableWidget(Button.builder(Component.literal("Theme"), b -> {
-            PaymentLedger.setChristmas(!xmas);
-            applyTheme(!xmas);
-        }).bounds(6, 44 + 5 * 24 + 6, SIDE - 12, 16).build());
+        themeButton = addRenderableWidget(Button.builder(Component.literal("Settings"), b -> {
+            if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
+        }).bounds(6, 44 + 5 * 24 + 6, SIDE - 12, 20).build());
 
         endButton = addRenderableWidget(Button.builder(Component.literal(sessionLabel()), b -> onEndSession())
                 .bounds(6, height - 52, SIDE - 12, 20).build());
@@ -431,7 +430,7 @@ public class DashboardScreen extends Screen {
         g.text(font, "BETTORS", 12, 12, GOLD, false);
         g.text(font, xmas ? "Merry Christmas" : "Payments", 12, 23, xmas ? RED : MUTED, false);
         for (var e : tabButtons.entrySet()) navButton(g, e.getKey(), e.getValue() == tab, mouseX, mouseY);
-        themeToggle(g, themeButton, mouseX, mouseY);
+        navButton(g, themeButton, false, mouseX, mouseY);
 
         boolean active = PaymentLedger.isSessionActive();
         boolean confirming = confirmUntil != 0;
@@ -441,7 +440,7 @@ public class DashboardScreen extends Screen {
         int sy = height - 82;
         g.text(font, active ? "SESSION" : "SESSION ENDED", 12, sy, active ? MUTED : RED, false);
         g.text(font, PaymentLedger.formatDuration(PaymentLedger.sessionMillis()), 12, sy + 11, active ? TEXT : MUTED, false);
-        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 5 * 24 + 26) {
+        if (PaymentLedger.lastSessionLength() >= 0 && sy - 28 > 44 + 5 * 24 + 30) {
             long p = PaymentLedger.lastSessionProfit();
             g.text(font, "LAST SESSION", 12, sy - 28, MUTED, false);
             g.text(font, PaymentLedger.formatDurationShort(PaymentLedger.lastSessionLength()) + "  "

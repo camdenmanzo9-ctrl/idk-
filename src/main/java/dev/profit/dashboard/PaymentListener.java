@@ -28,11 +28,20 @@ public final class PaymentListener {
         if (debug && (text.contains("$") || text.toLowerCase(Locale.ROOT).contains("paid"))) {
             chat("debug raw: " + text, ChatFormatting.GRAY);
         }
+        Parsed p = parse(text);
+        if (p != null) log(p.name(), p.amountText(), p.incoming());
+    }
+
+    /** A payment line split into its parts (used for logging and for recoloring chat). */
+    public record Parsed(String name, String amountText, boolean incoming) {}
+
+    public static Parsed parse(String text) {
         Matcher m;
-        if ((m = OUT.matcher(text)).find()) { log(m.group(1), m.group(2), false); return; }
-        if ((m = OUT2.matcher(text)).find()) { log(m.group(2), m.group(1), false); return; }
-        if ((m = IN.matcher(text)).find()) { log(m.group(1), m.group(2), true); return; }
-        if ((m = IN2.matcher(text)).find()) { log(m.group(2), m.group(1), true); }
+        if ((m = OUT.matcher(text)).find()) return new Parsed(m.group(1), m.group(2), false);
+        if ((m = OUT2.matcher(text)).find()) return new Parsed(m.group(2), m.group(1), false);
+        if ((m = IN.matcher(text)).find()) return new Parsed(m.group(1), m.group(2), true);
+        if ((m = IN2.matcher(text)).find()) return new Parsed(m.group(2), m.group(1), true);
+        return null;
     }
 
     private static void log(String player, String amount, boolean incoming) {
@@ -40,6 +49,7 @@ public final class PaymentListener {
             long amt = Money.parse(amount);
             if (incoming) PaymentLedger.record(player, amt, 0);
             else PaymentLedger.record(player, 0, amt);
+            Alerts.onPayment(player, amt, incoming);
             if (debug) chat("logged " + (incoming ? player + " paid you " : "you paid " + player + " ") + Money.format(amt), ChatFormatting.GREEN);
         } catch (Exception e) {
             if (debug) chat("couldn't read amount '" + amount + "'", ChatFormatting.RED);
