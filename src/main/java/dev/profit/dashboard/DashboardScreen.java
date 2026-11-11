@@ -43,6 +43,13 @@ public class DashboardScreen extends Screen {
     private final java.util.Map<Button, Tab> tabButtons = new java.util.LinkedHashMap<>();
     private final java.util.Map<Button, Integer> deleteButtons = new java.util.LinkedHashMap<>();
     private Button clearAllButton;
+
+    // Players tab: click a row to open that player's page
+    private static String detailPlayer = null;
+    private static long detailRange = 24L * 60 * 60 * 1000;   // 0 = all time
+    private final java.util.Map<Button, String> rowButtons = new java.util.LinkedHashMap<>();
+    private final java.util.Map<Button, Long> rangeButtons = new java.util.LinkedHashMap<>();
+    private Button backButton;
     private int pendingDelete = -2;      // history index waiting for a 2nd click, -1 = "clear all"
     private long pendingUntil = 0;
 
@@ -63,9 +70,9 @@ public class DashboardScreen extends Screen {
         addTab("Sessions", Tab.SESSIONS, 3);
 
         sessionScope = addRenderableWidget(Button.builder(Component.literal("Session"),
-                b -> { sessionView = true; scroll = 0; }).bounds(width - 136, 6, 64, 18).build());
+                b -> { sessionView = true; scroll = 0; rebuildWidgets(); }).bounds(width - 136, 6, 64, 18).build());
         allScope = addRenderableWidget(Button.builder(Component.literal("All Time"),
-                b -> { sessionView = false; scroll = 0; }).bounds(width - 72, 6, 64, 18).build());
+                b -> { sessionView = false; scroll = 0; rebuildWidgets(); }).bounds(width - 72, 6, 64, 18).build());
 
         themeButton = addRenderableWidget(Button.builder(Component.literal("Theme"), b -> {
             PaymentLedger.setChristmas(!xmas);
@@ -79,7 +86,55 @@ public class DashboardScreen extends Screen {
 
         deleteButtons.clear();
         clearAllButton = null;
+        rowButtons.clear();
+        rangeButtons.clear();
+        backButton = null;
         if (tab == Tab.SESSIONS) addSessionButtons();
+        if (tab == Tab.PLAYERS) {
+            if (detailPlayer == null) addLedgerRowButtons();
+            else addDetailButtons();
+        }
+    }
+
+    private List<Entry> ledgerOrder() {
+        List<Entry> s = new ArrayList<>(PaymentLedger.entries(sessionView));
+        s.sort(Comparator.comparingLong(Entry::volume).reversed());
+        return s;
+    }
+
+    // Invisible click areas over each player row (same layout math as drawLedger)
+    private void addLedgerRowButtons() {
+        int cx = SIDE + 10, cw = width - cx - 8;
+        int py = 38, ph = height - 8 - py, hy = py + 22, rowsTop = hy + 13, rowH = 12;
+        int visible = Math.max(1, (py + ph - 16 - rowsTop) / rowH);
+        List<Entry> s = ledgerOrder();
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, s.size() - visible)));
+        for (int i = 0; i < visible && scroll + i < s.size(); i++) {
+            String name = s.get(scroll + i).name;
+            Button b = addRenderableWidget(Button.builder(Component.literal(name),
+                    btn -> { detailPlayer = name; scroll = 0; rebuildWidgets(); })
+                    .bounds(cx + 4, rowsTop + i * rowH - 2, cw - 8, 12).build());
+            rowButtons.put(b, name);
+        }
+    }
+
+    private void addDetailButtons() {
+        int cx = SIDE + 10, cw = width - cx - 8;
+        backButton = addRenderableWidget(Button.builder(Component.literal("Back"),
+                b -> { detailPlayer = null; scroll = 0; rebuildWidgets(); })
+                .bounds(cx + cw - 52, 40, 52, 14).build());
+        long day = 24L * 60 * 60 * 1000;
+        String[] labels = {"24 hours", "7 days", "30 days", "All time"};
+        long[] ranges = {day, 7 * day, 30 * day, 0};
+        int bx = cx;
+        for (int i = 0; i < 4; i++) {
+            final long r = ranges[i];
+            int w = font.width(labels[i]) + 16;
+            Button b = addRenderableWidget(Button.builder(Component.literal(labels[i]),
+                    btn -> { detailRange = r; scroll = 0; }).bounds(bx, 60, w, 16).build());
+            rangeButtons.put(b, r);
+            bx += w + 4;
+        }
     }
 
     // Same layout math as drawSessions(), so the buttons line up with the rows.
@@ -119,7 +174,7 @@ public class DashboardScreen extends Screen {
 
     private void addTab(String label, Tab t, int i) {
         Button b = addRenderableWidget(Button.builder(Component.literal(label),
-                btn -> { tab = t; scroll = 0; pendingDelete = -2; rebuildWidgets(); }).bounds(6, 44 + i * 24, SIDE - 12, 20).build());
+                btn -> { tab = t; scroll = 0; pendingDelete = -2; detailPlayer = null; rebuildWidgets(); }).bounds(6, 44 + i * 24, SIDE - 12, 20).build());
         tabButtons.put(b, t);
     }
 
@@ -219,7 +274,10 @@ public class DashboardScreen extends Screen {
         List<Entry> list = PaymentLedger.entries(sessionView);
         switch (tab) {
             case DASHBOARD -> drawDashboard(g, list, cx, cw);
-            case PLAYERS -> drawLedger(g, list, cx, cw);
+            case PLAYERS -> {
+                if (detailPlayer != null) drawPlayerDetail(g, cx, cw, mouseX, mouseY);
+                else drawLedger(g, list, cx, cw, mouseX, mouseY);
+            }
             case PAID_YOU -> drawPaidYou(g, list, cx, cw);
             case SESSIONS -> drawSessions(g, cx, cw, mouseX, mouseY);
         }
@@ -306,8 +364,9 @@ public class DashboardScreen extends Screen {
     private void drawDashboard(GuiGraphicsExtractor g, List<Entry> list, int cx, int cw) {
         // Everything here is from YOUR side: + means you won from that player, - means you lost to them.
         long paid = 0, sent = 0, up = 0, down = 0;
-        int upCount = 0, downCount = 0;
+        int upCount = 0, downCount = 0, payCount = 0;
         for (Entry e : list) {
+            payCount += e.payments;
             paid += e.paidYou;
             sent += e.youPaid;
             long yours = -e.net();
@@ -317,7 +376,8 @@ public class DashboardScreen extends Screen {
         long net = up - down;
 
         int y = 38, gap = 6, cardW = (cw - gap * 4) / 5;
-        card(g, cx, y, cardW, "PLAYERS", String.valueOf(list.size()), sessionView ? "this session" : "all time", 0, TEXT);
+        card(g, cx, y, cardW, "PLAYERS", String.valueOf(list.size()),
+                payCount + (payCount == 1 ? " payment" : " payments"), 0, TEXT);
         card(g, cx + (cardW + gap), y, cardW, "PAID YOU", Money.format(paid), "received", 0, TEXT);
         card(g, cx + (cardW + gap) * 2, y, cardW, "YOU PAID", Money.format(sent), "sent", 0, TEXT);
         card(g, cx + (cardW + gap) * 3, y, cardW, "YOU'RE UP", Money.format(up),
@@ -453,7 +513,7 @@ public class DashboardScreen extends Screen {
 
     // ---------------- Players tab ----------------
 
-    private void drawLedger(GuiGraphicsExtractor g, List<Entry> list, int cx, int cw) {
+    private void drawLedger(GuiGraphicsExtractor g, List<Entry> list, int cx, int cw, int mouseX, int mouseY) {
         int py = 38, ph = height - 8 - py;
         panel(g, cx, py, cw, ph, GOLD);
         g.text(font, (sessionView ? "SESSION" : "ALL-TIME") + " PLAYER LEDGER", cx + 6, py + 7, GOLD, false);
@@ -474,8 +534,10 @@ public class DashboardScreen extends Screen {
             int idx = scroll + i;
             Entry e = s.get(idx);
             int ry = rowsTop + i * rowH;
-            if (i % 2 == 0) g.fill(cx + 4, ry - 2, cx + cw - 4, ry + 10, STRIPE);
-            g.text(font, fit((idx + 1) + ". " + e.name, paidX - cx - 12), cx + 6, ry, TEXT, false);
+            boolean hot = mouseX >= cx + 4 && mouseX < cx + cw - 4 && mouseY >= ry - 2 && mouseY < ry + 10;
+            if (hot) g.fill(cx + 4, ry - 2, cx + cw - 4, ry + 10, SELECT);
+            else if (i % 2 == 0) g.fill(cx + 4, ry - 2, cx + cw - 4, ry + 10, STRIPE);
+            g.text(font, fit((idx + 1) + ". " + e.name, paidX - cx - 12), cx + 6, ry, hot ? GOLD : TEXT, false);
             g.text(font, Money.format(e.paidYou), paidX, ry, TEXT, false);
             g.text(font, Money.format(e.youPaid), sentX, ry, TEXT, false);
             long yours = -e.net();
@@ -483,7 +545,7 @@ public class DashboardScreen extends Screen {
         }
         if (s.isEmpty()) g.text(font, "No payments logged yet", cx + 6, rowsTop, MUTED, false);
 
-        String legend = "+ you won from them   ·   - you lost to them";
+        String legend = "Click a player for details   ·   + you won from them   ·   - you lost to them";
         int legendW = Math.min(font.width(legend), cw - 12);
         g.text(font, fit(legend, cw - 12), cx + (cw - legendW) / 2, py + ph - 11, MUTED, false);
     }
@@ -520,6 +582,81 @@ public class DashboardScreen extends Screen {
         if (s.isEmpty()) g.text(font, "Nobody has paid you yet", cx + 6, rowsTop, MUTED, false);
     }
 
+    // ---------------- Player details (Players tab) ----------------
+
+    private static String ago(long ts) {
+        long sec = Math.max(0, (System.currentTimeMillis() - ts) / 1000);
+        if (sec < 60) return sec + "s ago";
+        long m = sec / 60;
+        if (m < 60) return m + "m ago";
+        long h = m / 60;
+        if (h < 24) return h + "h ago";
+        return (h / 24) + "d ago";
+    }
+
+    private void drawPlayerDetail(GuiGraphicsExtractor g, int cx, int cw, int mouseX, int mouseY) {
+        String name = detailPlayer;
+        bigText(g, fit(name, cw - 70), cx, 40, TEXT, cw - 70);
+        if (backButton != null) smallButton(g, backButton, false, mouseX, mouseY);
+
+        // range picker
+        for (var e : rangeButtons.entrySet()) {
+            Button b = e.getKey();
+            boolean on = e.getValue() == detailRange;
+            int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+            g.fill(x, y, x + w, y + h, on ? SELECT : over(b, mouseX, mouseY) ? HOVER : PANEL);
+            outline(g, x, y, w, h, on ? GOLD : LINE);
+            String t = b.getMessage().getString();
+            g.text(font, t, x + (w - font.width(t)) / 2, y + (h - 8) / 2, on ? GOLD : MUTED, false);
+        }
+
+        // totals for the chosen range
+        long since = detailRange == 0 ? 0 : System.currentTimeMillis() - detailRange;
+        List<PaymentLedger.Payment> pays = PaymentLedger.paymentsFor(name, since);
+        long paid = 0, sent = 0;
+        int count;
+        if (detailRange == 0) {
+            Entry all = PaymentLedger.allTimeFor(name);
+            if (all != null) { paid = all.paidYou; sent = all.youPaid; }
+            count = all != null ? all.payments : pays.size();
+        } else {
+            for (PaymentLedger.Payment p : pays) { paid += p.paidYou; sent += p.youPaid; }
+            count = pays.size();
+        }
+        long yours = paid - sent;   // + = you won from them (they're down), - = you lost to them (they're up)
+        String status = yours > 0 ? "They're down " + Money.format(yours)
+                : yours < 0 ? "They're up " + Money.format(-yours) : "Even";
+
+        int y = 82, gap = 6, cardW = (cw - gap * 3) / 4;
+        card(g, cx, y, cardW, "PAID YOU", Money.format(paid), "received", 0, TEXT);
+        card(g, cx + (cardW + gap), y, cardW, "YOU PAID", Money.format(sent), "sent", 0, TEXT);
+        card(g, cx + (cardW + gap) * 2, y, cardW, "YOUR NET", signed(yours), status.toLowerCase(), 0, yourColor(yours));
+        card(g, cx + (cardW + gap) * 3, y, cardW, "PAYMENTS", String.valueOf(count),
+                detailRange == 0 ? "all time" : "in this range", 0, TEXT);
+
+        // payment list
+        int py = 134, ph = height - 8 - py;
+        if (ph < 30) return;
+        panel(g, cx, py, cw, ph, 0);
+        g.text(font, "PAYMENTS", cx + 8, py + 8, TEXT, false);
+        int rowsTop = py + 24, rowH = 12, visible = Math.max(1, (py + ph - 18 - rowsTop) / rowH);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, pays.size() - visible)));
+        for (int i = 0; i < visible && scroll + i < pays.size(); i++) {
+            PaymentLedger.Payment p = pays.get(scroll + i);
+            int ry = rowsTop + i * rowH;
+            if (i % 2 == 0) g.fill(cx + 4, ry - 2, cx + cw - 4, ry + 10, STRIPE);
+            boolean in = p.paidYou > 0;
+            g.text(font, in ? "paid you" : "you paid", cx + 8, ry, MUTED, false);
+            String amt = (in ? "+" : "-") + Money.format(in ? p.paidYou : p.youPaid);
+            g.text(font, amt, cx + 8 + font.width("you paid") + 16, ry, in ? GREEN : RED, false);
+            String when = when(p.ts) + "   " + ago(p.ts);
+            rightText(g, when, cx + cw - 8, ry, MUTED);
+        }
+        if (pays.isEmpty()) g.text(font, "No payments in this time range", cx + 8, rowsTop, MUTED, false);
+        g.text(font, "History with times is kept from this update on, for about a month.",
+                cx + 8, py + ph - 12, MUTED, false);
+    }
+
     // ---------------- Sessions tab ----------------
 
     private static final java.time.format.DateTimeFormatter WHEN =
@@ -533,7 +670,8 @@ public class DashboardScreen extends Screen {
         boolean active = PaymentLedger.isSessionActive();
         List<Entry> cur = PaymentLedger.entries(true);
         long in = 0, out = 0;
-        for (Entry e : cur) { in += e.paidYou; out += e.youPaid; }
+        int payCount = 0;
+        for (Entry e : cur) { in += e.paidYou; out += e.youPaid; payCount += e.payments; }
         long profit = in - out;
 
         // Current session cards
@@ -541,7 +679,7 @@ public class DashboardScreen extends Screen {
         card(g, cx, y, cardW, "STATUS", active ? "RUNNING" : "ENDED",
                 "since " + when(PaymentLedger.sessionStartTime()), active ? GREEN : RED, active ? GREEN : RED);
         card(g, cx + (cardW + gap), y, cardW, "LENGTH", PaymentLedger.formatDuration(PaymentLedger.sessionMillis()),
-                active ? "live" : "final", LINE, TEXT);
+                payCount + (payCount == 1 ? " payment" : " payments"), LINE, TEXT);
         card(g, cx + (cardW + gap) * 2, y, cardW, "RECEIVED", Money.format(in), cur.size() + (cur.size() == 1 ? " player" : " players"), 0, TEXT);
         card(g, cx + (cardW + gap) * 3, y, cardW, "SENT", Money.format(out), "paid out", 0, TEXT);
         card(g, cx + (cardW + gap) * 4, y, cardW, "YOUR PROFIT", (profit >= 0 ? "+" : "") + Money.format(profit),
@@ -566,7 +704,7 @@ public class DashboardScreen extends Screen {
         g.text(font, "LENGTH", lenX, hy, MUTED, false);
         g.text(font, "RECEIVED", inX, hy, MUTED, false);
         g.text(font, "SENT", outX, hy, MUTED, false);
-        g.text(font, "PLAYERS", plX, hy, MUTED, false);
+        g.text(font, "PAYMENTS", plX, hy, MUTED, false);
         rightText(g, "PROFIT", right, hy, MUTED);
 
         int rowsTop = hy + 13, rowH = 12, visible = Math.max(1, (py + ph - 6 - rowsTop) / rowH);
@@ -579,7 +717,7 @@ public class DashboardScreen extends Screen {
             g.text(font, PaymentLedger.formatDuration(r.length()), lenX, ry, TEXT, false);
             g.text(font, Money.format(r.received), inX, ry, GOLD, false);
             g.text(font, Money.format(r.sent), outX, ry, RED, false);
-            g.text(font, String.valueOf(r.players), plX, ry, TEXT, false);
+            g.text(font, r.payments > 0 ? String.valueOf(r.payments) : "-", plX, ry, TEXT, false);
             long p = r.profit();
             rightText(g, (p >= 0 ? "+" : "") + Money.format(p), right, ry, p >= 0 ? GREEN : RED);
         }
@@ -603,7 +741,7 @@ public class DashboardScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         scroll = Math.max(0, scroll - (int) Math.signum(scrollY) * 2);
-        if (tab == Tab.SESSIONS) rebuildWidgets();
+        if (tab == Tab.SESSIONS || (tab == Tab.PLAYERS && detailPlayer == null)) rebuildWidgets();
         return true;
     }
 

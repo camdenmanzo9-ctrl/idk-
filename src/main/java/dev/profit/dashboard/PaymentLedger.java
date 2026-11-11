@@ -20,10 +20,19 @@ public final class PaymentLedger {
         public String name;
         public long paidYou;  // money this player sent you
         public long youPaid;  // money you sent this player
+        public int payments;  // how many payments went back and forth
 
         /** Positive = player is UP on you, negative = player is DOWN (you won). */
         public long net() { return youPaid - paidYou; }
         public long volume() { return paidYou + youPaid; }
+    }
+
+    /** One payment with its time, kept for about a month for the player details page. */
+    public static final class Payment {
+        public String name;
+        public long paidYou;
+        public long youPaid;
+        public long ts;
     }
 
     /** One finished session, kept for the Sessions tab. */
@@ -33,6 +42,7 @@ public final class PaymentLedger {
         public long received;
         public long sent;
         public int players;
+        public int payments;
         public long profit() { return received - sent; }
         public long length() { return end - start; }
     }
@@ -47,7 +57,10 @@ public final class PaymentLedger {
         long lastSessionProfit = 0;
         List<SessionRecord> history = new ArrayList<>();
         String theme = "classic";
+        List<Payment> log = new ArrayList<>();
     }
+
+    private static final long KEEP_MS = 35L * 24 * 60 * 60 * 1000;   // ~a month
 
     public record SessionSummary(long lengthMs, long received, long sent, int players) {
         public long profit() { return received - sent; }
@@ -69,6 +82,7 @@ public final class PaymentLedger {
         if (data.allTime == null) data.allTime = new LinkedHashMap<>();
         if (data.session == null) data.session = new LinkedHashMap<>();
         if (data.history == null) data.history = new ArrayList<>();
+        if (data.log == null) data.log = new ArrayList<>();
         if (data.sessionStart <= 0) data.sessionStart = System.currentTimeMillis();
     }
 
@@ -83,22 +97,48 @@ public final class PaymentLedger {
 
     /** Logs a payment to the all-time ledger, and to the session if one is running. */
     public static void record(String player, long paidYou, long youPaid) {
-        add(data.allTime, player, paidYou, youPaid);
-        if (data.sessionActive) add(data.session, player, paidYou, youPaid);
+        add(data.allTime, player, paidYou, youPaid, true);
+        if (data.sessionActive) add(data.session, player, paidYou, youPaid, true);
+
+        Payment pay = new Payment();
+        pay.name = player;
+        pay.paidYou = paidYou;
+        pay.youPaid = youPaid;
+        pay.ts = System.currentTimeMillis();
+        data.log.add(pay);
+        long cutoff = pay.ts - KEEP_MS;
+        data.log.removeIf(x -> x.ts < cutoff);
+        while (data.log.size() > 20000) data.log.remove(0);
         save();
+    }
+
+    /** Payments with one player since a time, newest first. */
+    public static List<Payment> paymentsFor(String player, long since) {
+        List<Payment> out = new ArrayList<>();
+        for (int i = data.log.size() - 1; i >= 0; i--) {
+            Payment x = data.log.get(i);
+            if (x.ts >= since && x.name.equalsIgnoreCase(player)) out.add(x);
+        }
+        return out;
+    }
+
+    /** All-time totals for one player (includes imported history). */
+    public static Entry allTimeFor(String player) {
+        return data.allTime.get(player.toLowerCase(Locale.ROOT));
     }
 
     /** Adds old history to the all-time ledger only (doesn't count toward the session). */
     public static void importAllTime(String player, long paidYou, long youPaid) {
-        add(data.allTime, player, paidYou, youPaid);
+        add(data.allTime, player, paidYou, youPaid, false);
         save();
     }
 
-    private static void add(Map<String, Entry> map, String player, long paidYou, long youPaid) {
+    private static void add(Map<String, Entry> map, String player, long paidYou, long youPaid, boolean isPayment) {
         Entry e = map.computeIfAbsent(player.toLowerCase(Locale.ROOT), k -> new Entry());
         e.name = player;
         e.paidYou += paidYou;
         e.youPaid += youPaid;
+        if (isPayment) e.payments++;
     }
 
     public static List<Entry> entries(boolean session) {
@@ -153,6 +193,9 @@ public final class PaymentLedger {
         r.received = in;
         r.sent = out;
         r.players = s.players();
+        int count = 0;
+        for (Entry e : data.session.values()) count += e.payments;
+        r.payments = count;
         data.history.add(0, r);                       // newest first
         while (data.history.size() > 100) data.history.remove(data.history.size() - 1);
 
