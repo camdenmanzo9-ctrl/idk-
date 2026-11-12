@@ -40,7 +40,7 @@ public class OverviewScreen extends Screen {
     private final List<Button> rangeButtons = new ArrayList<>();
     private final List<Button> tabButtons = new ArrayList<>();
     private final List<Button> filterButtons = new ArrayList<>();
-    private Button settingsButton, sessionButton;
+    private Button settingsButton, sessionButton, headerSettings;
     private EditBox searchBox;
     private static String search = "";
     private final List<Button> panelButtons = new ArrayList<>();
@@ -146,7 +146,12 @@ public class OverviewScreen extends Screen {
             rangeButtons.add(0, btn(RANGE_LABELS[i], bx - bw, fy + 8, bw, () -> range = r));
             bx -= bw + 3;
         }
-        escX = bx - 10;   // "ESC close" is drawn here
+        // SETTINGS button (opens the green settings screen), then "ESC close" to its left
+        int setW = small("SETTINGS");
+        headerSettings = btn("SETTINGS", bx - 4 - setW, fy + 8, setW, () -> {
+            if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
+        });
+        escX = bx - 4 - setW - 8;   // "ESC close" is drawn here
         settingsButton = null;
         searchBox = null;
 
@@ -396,6 +401,7 @@ public class OverviewScreen extends Screen {
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
         text(g, "ESC close", escX - w("ESC close", 0.62f), fy + 11, DIM, 0.62f, false);
+        if (headerSettings != null) pill(g, headerSettings, false, mx, my);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
     }
 
@@ -403,10 +409,13 @@ public class OverviewScreen extends Screen {
     private void drawOverview(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         String me = minecraft != null ? minecraft.getUser().getName() : "you";
         int wy = welcomeY();
-        glow(g, fx + 60, wy + 20, 120, 30, PURPLE, 40);
+        glow(g, fx + 90, wy + 22, 110, 26, PURPLE, 24);
         if (minecraft != null && minecraft.player != null && Settings.S.skinFaces) {
-            InventoryScreen.extractEntityInInventoryFollowsMouse(g, fx + 12, wy - 8, fx + 52, wy + 46, 22, 0.0625f,
-                    mouseX, mouseY, minecraft.player);
+            // Standing still and facing straight ahead: the "look at" point is the middle of its own box
+            int bx1 = fx + 14, by1 = wy, bx2 = fx + 50, by2 = wy + 46;
+            glow(g, (bx1 + bx2) / 2, (by1 + by2) / 2, 26, 26, PURPLE, 34);
+            InventoryScreen.extractEntityInInventoryFollowsMouse(g, bx1, by1, bx2, by2, 20, 0.0625f,
+                    (bx1 + bx2) / 2f, (by1 + by2) / 2f, minecraft.player);
         } else {
             face(g, me, fx + 16, wy + 4, 34);
         }
