@@ -508,6 +508,30 @@ public class OverviewScreen extends Screen {
         text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? TEXT : hover ? TEXT : MUTED, sc, true);
     }
 
+    /** Thin, smooth, wavy line (no fill), soft edges. */
+    private void smoothLine(GuiGraphicsExtractor g, long[] vals, int x, int y, int w, int h, int color) {
+        if (vals.length < 2) { g.fill(x, y + h - 1, x + w, y + h, alpha(color, 70)); return; }
+        long min = Long.MAX_VALUE, max = Long.MIN_VALUE;
+        for (long v : vals) { min = Math.min(min, v); max = Math.max(max, v); }
+        if (max == min) { max++; min--; }
+        double prev = Double.NaN;
+        for (int px = 0; px < w; px++) {
+            double t = (double) px * (vals.length - 1) / Math.max(1, w - 1);
+            int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
+            double f = t - i0, e = (1 - Math.cos(Math.PI * f)) / 2;   // eased between points: rounded waves
+            double v = vals[i0] + (vals[i1] - vals[i0]) * e;
+            double fy = y + 1 + (max - v) / (double) (max - min) * (h - 3);
+            double a = Double.isNaN(prev) ? fy : prev;
+            double lo = Math.min(a, fy) - 0.55, hi = Math.max(a, fy) + 0.55;
+            int c0 = (int) Math.ceil(lo), c1 = (int) Math.floor(hi);
+            if (c1 > c0) g.fill(x + px, c0, x + px + 1, c1, color);
+            float tc = (float) (c0 - lo), bc = (float) (hi - c1);
+            if (tc > 0.05f) g.fill(x + px, c0 - 1, x + px + 1, c0, alpha(color, (int) (255 * tc)));
+            if (bc > 0.05f) g.fill(x + px, c1, x + px + 1, c1 + 1, alpha(color, (int) (255 * bc)));
+            prev = fy;
+        }
+    }
+
     /** One bar per day, today on the right and brightest. */
     private void bars(GuiGraphicsExtractor g, long[] vals, int x, int y, int bw, int bh, int color) {
         int n = vals.length;
@@ -647,7 +671,8 @@ public class OverviewScreen extends Screen {
     private void drawHeader(GuiGraphicsExtractor g, int mx, int my) {
         int hy = fy + 10;
         int lx = fx + 10;
-        donut(g, lx + 4, hy + 4);
+        ring(g, lx + 4, hy + 4, 8, 2, 1f, alpha(PURPLE, 40), alpha(PURPLE, 40));   // soft glow
+        ring(g, lx + 4, hy + 4, 6, 2, 1f, PURPLE, PURPLE);                         // the ring
         int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
         text(g, "v1.0", x, hy + 2, DIM, 0.74f, false);
         x += w("v1.0", 0.74f) + 10;
@@ -697,6 +722,23 @@ public class OverviewScreen extends Screen {
         g.fill(cx, cy - 5, cx + 1, cy - 4, 0xFF60A5FA);
     }
 
+    /** Text with a soft glow around the letters. */
+    private void glowText(GuiGraphicsExtractor g, String s, int x, int y, int color, float scale) {
+        int[][] offs = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+        for (int[] o : offs) text(g, s, x + o[0], y + o[1], alpha(PURPLE, 34), scale, true);
+        for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) text(g, s, x + o[0], y + o[1], alpha(PURPLE, 16), scale, true);
+        text(g, s, x, y, color, scale, true);
+    }
+
+    /** Soft round glow: stacked rounded shapes, very faint each. */
+    private static void softGlow(GuiGraphicsExtractor g, int cx, int cy, int rw, int rh, int color, int strength) {
+        int layers = 8, per = Math.max(1, strength / layers);
+        for (int i = layers; i >= 1; i--) {
+            int w = rw * i / layers, h = rh * i / layers;
+            round(g, cx - w, cy - h, w * 2, h * 2, Math.min(Math.min(w, h), 12), alpha(color, per));
+        }
+    }
+
     /** Settings gear button. */
     private void gear(GuiGraphicsExtractor g, Button b, int mx, int my) {
         boolean hot = over(b, mx, my);
@@ -729,7 +771,7 @@ public class OverviewScreen extends Screen {
         }
         int nx = fx + 60;
         text(g, "Welcome back, ", nx, wy + 9, TEXT, 1.6f, true);
-        text(g, me, nx + wb("Welcome back, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f, true);
+        glowText(g, me, nx + wb("Welcome back, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f);
         text(g, "Have a great time on DonutSMP!", nx, wy + 27, MUTED, 0.75f, false);
 
         // session badge
@@ -776,8 +818,7 @@ public class OverviewScreen extends Screen {
         long inRange = 0;
         for (int i = Math.max(0, play.length - days); i < play.length; i++) inRange += play[i];
         String playSub = "+" + (inRange / 3_600_000L) + "h " + (inRange % 3_600_000L / 60_000L) + "m " + rangeWord();
-        card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, null);
-        bars(g, play, c2 + 10, cy + ch - 22, cw - 20, 16, BLUE);
+        card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, play);
 
         String since0 = pays.isEmpty() ? "no payments yet" : "since " + day(pays.get(0).ts);
         int pc = net >= 0 ? GREEN : RED;
@@ -844,11 +885,12 @@ public class OverviewScreen extends Screen {
     private void card(GuiGraphicsExtractor g, int x, int y, int cw, int ch, String label, String value, String sub,
                       int lineColor, int valueColor, int subColor, long[] series) {
         box(g, x, y, cw, ch, PANEL, BORDER);
+        softGlow(g, x + cw * 55 / 100, y + ch / 2, cw / 3, ch / 2 - 4, lineColor, 26);
         caps(g, label, x + 10, y + 9, MUTED);
         round(g, x + cw - 14, y + 10, 5, 5, 2, lineColor);
         text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
         text(g, sub, x + 10, y + 37, subColor, 0.72f, false);
-        if (series != null) spark(g, series, x + 8, y + ch - 22, cw - 16, 16, lineColor);
+        if (series != null) smoothLine(g, series, x + 10, y + ch - 22, cw - 20, 16, lineColor);
     }
 
     private void chart(GuiGraphicsExtractor g, long[] vals, int x, int y, int cw, int ch) {
