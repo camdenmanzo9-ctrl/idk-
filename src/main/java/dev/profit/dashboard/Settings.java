@@ -85,6 +85,60 @@ public final class Settings {
         return t;
     }
 
+    // General: menu background
+    public int themeIndex = 0;            // see THEMES
+    public boolean bgGradient = true;
+    public int bgTop = 0x000000, bgBottom = 0x000000;
+    public int bgOpacity = 95, bgBrightness = 0, dimGame = 55;
+
+    // Chat: tax
+    public boolean countTax = false, colorTax = true;
+    public int taxColor = 0x9E9E9E;
+    public float taxPct = 2.0f;
+
+    // Chat filter
+    public boolean filterOn = false, filterReceived = true, filterSent = true;
+    public long filterUnder = 1_000_000L;
+
+    // Win streak
+    public boolean streakShow = true, streakSeparate = true, streakCommands = true, streakAccent = false, streakBorder = true;
+    public float streakSize = 0.9f;
+    public int streakOpacity = 60;
+    public int wins = 0, losses = 0, streak = 0;   // streak: + = wins in a row, - = losses in a row
+    public int streakX = 8, streakY = 60;
+
+    // Popup style
+    public int popupAnim = 0;                      // 0 Pop, 1 Slide, 2 Fade
+    public int popupOpacity = 92, popupBorderW = 1, popupGlowPct = 100, popupSparkleCount = 8;
+    public boolean popupPlus = true, popupCountUp = true, popupFace = true, popupFaceBounce = true, popupTimerBar = true;
+    public int popupTimerColor = 0xFFD700;
+
+    // Move HUDs (offsets from each box's normal spot)
+    public int hudOffX = 0, hudOffY = 0, auctionOffX = 0, auctionOffY = 0;
+
+    public static final String[] THEMES = {"Pure black", "Charcoal", "Midnight", "Navy", "Plum", "Custom"};
+    public static final int[][] THEME_COLORS = {
+            {0x000000, 0x000000}, {0x1C1C1C, 0x111111}, {0x0D0B15, 0x050409},
+            {0x0B1220, 0x060A12}, {0x1E1028, 0x0C0612}};
+
+    public static void applyTheme(int i) {
+        S.themeIndex = Math.floorMod(i, THEMES.length);
+        if (S.themeIndex < THEME_COLORS.length) {
+            S.bgTop = THEME_COLORS[S.themeIndex][0];
+            S.bgBottom = THEME_COLORS[S.themeIndex][1];
+        }
+    }
+
+    public static final long[] SMALL_STEPS = {
+            1L, 1_000L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 50_000_000L, 100_000_000L, 1_000_000_000L
+    };
+
+    public static long stepSmall(long current, int dir) {
+        int i = 0;
+        for (int k = 0; k < SMALL_STEPS.length; k++) if (SMALL_STEPS[k] <= current) i = k;
+        return SMALL_STEPS[Math.max(0, Math.min(SMALL_STEPS.length - 1, i + dir))];
+    }
+
     // Rakeback (Rakeback tab): give back this % of what a player lost, once they've lost at least rakeMin
     public int rakePct = 10;
     public long rakeMin = 1_000_000_000L;

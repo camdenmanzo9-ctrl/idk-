@@ -3,6 +3,7 @@ package dev.profit.dashboard;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
@@ -90,6 +91,7 @@ public final class Alerts {
         Font f = mc.font;
         if (Settings.S.hudShow) renderProfitBox(g, f, mc);
         renderAuctionBox(g, f, mc);
+        if (Settings.S.streakShow) renderStreak(g, f, mc);
         if (current != null) renderPopup(g, f, mc);
     }
 
@@ -118,8 +120,9 @@ public final class Alerts {
         int w = Math.max(110, Math.max(f.width(value) * 2 + 20, f.width(sub) + 20)), h = 44;
         float sc = s.hudSize;
         int sw = (int) (mc.getWindow().getGuiScaledWidth() / sc), sh = (int) (mc.getWindow().getGuiScaledHeight() / sc);
-        int x = (s.hudCorner % 2 == 0) ? 6 : sw - w - 6;
-        int y = (s.hudCorner < 2) ? 6 : sh - h - 40;
+        int x = ((s.hudCorner % 2 == 0) ? 6 : sw - w - 6) + s.hudOffX;
+        int y = ((s.hudCorner < 2) ? 6 : sh - h - 40) + s.hudOffY;
+        lastProfitRect = new int[]{(int) (x * sc), (int) (y * sc), (int) (w * sc), (int) (h * sc)};
 
         g.pose().pushMatrix();
         g.pose().scale(sc, sc);
@@ -162,7 +165,7 @@ public final class Alerts {
 
         int w = 104, h = 96;
         int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
-        int x = (sw - w) / 2, y = 6;   // top middle of the screen
+        int x = (sw - w) / 2 + Settings.S.auctionOffX, y = 6 + Settings.S.auctionOffY;   // top middle of the screen
         int cx = x + w / 2;
 
         // soft rounded panel
@@ -230,67 +233,156 @@ public final class Alerts {
         return 0xFF000000 | (r << 16) | (gg << 8) | b;
     }
 
+    public static int[] lastProfitRect = {0, 0, 0, 0};
+
+    // ---------------- win streak box ----------------
+    public static int[] streakRect(Minecraft mc) {
+        Settings s = Settings.S;
+        int w = (int) (110 * s.streakSize), h = (int) (40 * s.streakSize);
+        if (!s.streakSeparate && Settings.S.hudShow) {   // tucked under the profit box
+            return new int[]{lastProfitRect[0], lastProfitRect[1] + lastProfitRect[3] + 4, w, h};
+        }
+        return new int[]{s.streakX, s.streakY, w, h};
+    }
+
+    private static void renderStreak(GuiGraphicsExtractor g, Font f, Minecraft mc) {
+        Settings s = Settings.S;
+        int[] r = streakRect(mc);
+        int x = r[0], y = r[1];
+        float sc = s.streakSize;
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(sc, sc);
+        int w = 110, h = 40;
+        int bg = argb(0x0B0B14, Math.max(0, Math.min(255, s.streakOpacity * 255 / 100)));
+        g.fill(0, 0, w, h, bg);
+        if (s.streakBorder) outline(g, 0, 0, w, h, 0x40FFFFFF);
+        int col = s.streak > 0 ? 0xFF4ADE80 : s.streak < 0 ? 0xFFFF5A6E : 0xFFFFFFFF;
+        if (s.streakAccent) g.fill(0, 0, 2, h, col);
+        itext(g, f, "WIN STREAK", 8, 6, 0xFFB4B8C8, 0.72f, true);
+        String big = s.streak > 0 ? s.streak + (s.streak == 1 ? " WIN" : " WINS")
+                : s.streak < 0 ? (-s.streak) + (s.streak == -1 ? " LOSS" : " LOSSES") : "0";
+        itext(g, f, big, 8, 16, col, 1.3f, true);
+        String tot = "W " + s.wins + "  -  L " + s.losses;
+        itext(g, f, tot, w - 8 - iw(f, tot, 0.7f, false), 8, 0xFF9AA0AD, 0.7f, false);
+        g.pose().popMatrix();
+    }
+
+    public static void addWin() {
+        Settings s = Settings.S;
+        s.wins++;
+        s.streak = s.streak >= 0 ? s.streak + 1 : 1;
+        Settings.save();
+    }
+
+    public static void addLoss() {
+        Settings s = Settings.S;
+        s.losses++;
+        s.streak = s.streak <= 0 ? s.streak - 1 : -1;
+        Settings.save();
+    }
+
+    public static void resetStreak() {
+        Settings s = Settings.S;
+        s.wins = 0; s.losses = 0; s.streak = 0;
+        Settings.save();
+    }
+
+    // ---------------- big-payment popup (Popup alert + Popup style) ----------------
     private static void renderPopup(GuiGraphicsExtractor g, Font f, Minecraft mc) {
         Settings s = Settings.S;
         long now = System.currentTimeMillis();
         long age = now - current.start;
         long total = (long) (s.popupDuration * 1000);
-        float in = Math.min(1f, age / 200f), out = Math.min(1f, Math.max(0f, (total + 300 - age) / 300f));
-        float vis = Math.min(in, out);
+        float in = Math.min(1f, age / 250f), out = Math.min(1f, Math.max(0f, (total + 300 - age) / 300f));
+        float easeIn = 1f - (1f - in) * (1f - in) * (1f - in);
+        float vis = s.popupAnim == 2 ? Math.min(in, out) : Math.min(Math.min(1f, in * 2f), out);
         if (vis <= 0) return;
 
         float sc = s.popupSize;
         int sw = (int) (mc.getWindow().getGuiScaledWidth() / sc);
-        String amt = "+" + Money.format(current.amount);
-        String line = current.name + " paid you";
-        int w = Math.max(180, Math.max(f.width(amt) * 2 + 30, f.width(line) + 30)), h = 54;
         boolean auctionShowing = (Auction.running || (Auction.ended && now - Auction.endAt < 6000)) && !Auction.item.isEmpty();
         int baseY = auctionShowing ? (int) (110 / sc) : 24;
-        int x = (sw - w) / 2, y = baseY - (int) ((1 - in) * 14);
+
+        // count-up amount
+        float countP = s.popupCountUp ? Math.min(1f, age / 700f) : 1f;
+        countP = 1f - (1f - countP) * (1f - countP);
+        long shown = (long) (current.amount * countP);
+        String amt = (s.popupPlus ? "+" : "") + Money.format(shown);
+        String amtFinal = (s.popupPlus ? "+" : "") + Money.format(current.amount);
+        String line = current.name + " paid you";
+        int faceW = s.popupFace ? 30 : 0;
+        int w = Math.max(190, Math.max(iw(f, amtFinal, 2f, true) + 34 + faceW, iw(f, line, 0.85f, true) + 34 + faceW)), h = 58;
+        int x = (sw - w) / 2, y = baseY;
+        if (s.popupAnim == 1) y -= (int) ((1f - easeIn) * 30);   // slide down
 
         g.pose().pushMatrix();
         g.pose().scale(sc, sc);
+        if (s.popupAnim == 0) {   // pop: grows in with a little overshoot
+            float pop = in < 1f ? 0.8f + 0.25f * (float) Math.sin(in * Math.PI * 0.75) + 0.0f * in : 1f;
+            pop = Math.min(pop, 1.05f);
+            if (in >= 1f) pop = 1f;
+            g.pose().translate(x + w / 2f, y + h / 2f);
+            g.pose().scale(pop, pop);
+            g.pose().translate(-(x + w / 2f), -(y + h / 2f));
+        }
         int a = (int) (vis * 255);
         double t = now / 1500.0;
 
-        if (s.popupGlow) {
+        if (s.popupGlow && s.popupGlowPct > 0) {
             int gc = s.popupRainbow ? rainbow(t) : argb(s.popupBorder, 255);
-            for (int i = 4; i >= 1; i--) g.fill(x - i * 2, y - i * 2, x + w + i * 2, y + h + i * 2, argb(gc, (int) (vis * 18)));
+            int strength = (int) (vis * 22 * s.popupGlowPct / 100f);
+            for (int i = 4; i >= 1; i--) g.fill(x - i * 2, y - i * 2, x + w + i * 2, y + h + i * 2, argb(gc, strength));
         }
-        g.fill(x, y, x + w, y + h, argb(s.popupBg, (int) (vis * 235)));
+        g.fill(x, y, x + w, y + h, argb(s.popupBg, (int) (vis * 255 * s.popupOpacity / 100f)));
 
-        // border: rainbow runs around the edge, or one solid color
+        // border (width from Popup style)
+        int bwid = Math.max(1, Math.min(4, s.popupBorderW));
         for (int px = 0; px < w; px++) {
             int c = s.popupRainbow ? rainbow(t + px / (double) w) : argb(s.popupBorder, 255);
-            g.fill(x + px, y, x + px + 1, y + 1, argb(c, a));
-            g.fill(x + px, y + h - 1, x + px + 1, y + h, argb(c, a));
+            g.fill(x + px, y, x + px + 1, y + bwid, argb(c, a));
+            g.fill(x + px, y + h - bwid, x + px + 1, y + h, argb(c, a));
         }
         for (int py = 0; py < h; py++) {
             int c1 = s.popupRainbow ? rainbow(t + py / (double) h * 0.3) : argb(s.popupBorder, 255);
             int c2 = s.popupRainbow ? rainbow(t + 0.5 + py / (double) h * 0.3) : argb(s.popupBorder, 255);
-            g.fill(x, y + py, x + 1, y + py + 1, argb(c1, a));
-            g.fill(x + w - 1, y + py, x + w, y + py + 1, argb(c2, a));
+            g.fill(x, y + py, x + bwid, y + py + 1, argb(c1, a));
+            g.fill(x + w - bwid, y + py, x + w, y + py + 1, argb(c2, a));
         }
 
         if (s.popupShine) {
             int sx = x + (int) ((age % 1400) / 1400.0 * (w + 40)) - 20;
             for (int i = 0; i < 14; i++) {
-                int col = Math.max(x + 1, Math.min(x + w - 1, sx + i));
-                g.fill(col, y + 1, col + 1, y + h - 1, argb(0xFFFFFF, (int) (vis * (14 - Math.abs(i - 7) * 2))));
+                int col = Math.max(x + bwid, Math.min(x + w - bwid - 1, sx + i));
+                g.fill(col, y + bwid, col + 1, y + h - bwid, argb(0xFFFFFF, (int) (vis * (14 - Math.abs(i - 7) * 2))));
             }
         }
 
-        g.text(f, "BIG PAYMENT", x + 12, y + 8, argb(0x9AA0AD, a), false);
-        g.text(f, current.name, x + 12, y + 20, argb(s.popupName, a), false);
-        g.text(f, " paid you", x + 12 + f.width(current.name), y + 20, argb(0xFFFFFF, a), false);
-        g.pose().pushMatrix();
-        g.pose().translate(x + 12, y + 32);
-        g.pose().scale(2f, 2f);
-        g.text(f, amt, 0, 0, argb(s.popupAmount, a), false);
-        g.pose().popMatrix();
+        int tx = x + 12;
+        if (s.popupFace) {
+            int bounce = s.popupFaceBounce ? (int) Math.round(Math.abs(Math.sin(age / 160.0)) * 3 * Math.max(0, 1 - age / 1500.0)) : 0;
+            try {
+                var conn = mc.getConnection();
+                var info = conn == null ? null : conn.getPlayerInfo(current.name);
+                if (info != null) PlayerFaceExtractor.extractRenderState(g, info.getSkin(), x + 10, y + 16 - bounce, 24);
+                else g.fill(x + 10, y + 16 - bounce, x + 34, y + 40 - bounce, argb(0x8B5CF6, a));
+            } catch (Exception ignored) { }
+            tx = x + 42;
+        }
+        itext(g, f, "BIG PAYMENT", tx, y + 8, argb(0x9AA0AD, a), 0.7f, true);
+        itext(g, f, current.name, tx, y + 19, argb(s.popupName, a), 0.85f, true);
+        itext(g, f, " paid you", tx + iw(f, current.name, 0.85f, true), y + 19, argb(0xFFFFFF, a), 0.85f, false);
+        itext(g, f, amt, tx, y + 31, argb(s.popupAmount, a), 2f, true);
+
+        // timer bar
+        if (s.popupTimerBar) {
+            float left = Math.max(0f, 1f - age / (float) total);
+            g.fill(x + bwid, y + h - bwid - 2, x + bwid + (int) ((w - 2 * bwid) * left), y + h - bwid, argb(s.popupTimerColor, a));
+        }
 
         if (s.popupSparkles) {
-            for (int i = 0; i < 14; i++) {
+            int n = Math.max(0, Math.min(30, s.popupSparkleCount));
+            for (int i = 0; i < n; i++) {
                 int hx = (i * 73856093) ^ 0x5bd1e995, hy = (i * 19349663) ^ 0x27d4eb2d;
                 int px = x - 6 + Math.abs(hx % (w + 12)), py = y - 6 + Math.abs(hy % (h + 12));
                 double tw = Math.sin(now / 180.0 + i * 1.7);
@@ -325,6 +417,13 @@ public final class Alerts {
             out.append(Component.literal(p.name()).withStyle(nameStyle));
             out.append(Component.literal(" "));
             out.append(Component.literal(amount).withStyle(amtStyle));
+            if (s.taxPct > 0) {
+                try {
+                    long tax = Math.round(Money.parse(p.amountText()) * (s.taxPct / 100.0));
+                    Style taxStyle = Style.EMPTY.withColor(TextColor.fromRgb(s.colorTax ? s.taxColor : 0xAAAAAA));
+                    out.append(Component.literal(" (+" + Money.format(tax) + " tax)").withStyle(taxStyle));
+                } catch (Exception ignored) { }
+            }
         }
         return out;
     }

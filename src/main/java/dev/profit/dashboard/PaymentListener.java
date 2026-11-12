@@ -47,6 +47,8 @@ public final class PaymentListener {
     private static void log(String player, String amount, boolean incoming) {
         try {
             long amt = Money.parse(amount);
+            if (!incoming && Settings.S.countTax && Settings.S.taxPct > 0)   // what you paid includes the tax
+                amt += Math.round(amt * (Settings.S.taxPct / 100.0));
             if (incoming && Auction.capturing()) {   // auction running: this payment is a bid, not a bet
                 Auction.bid(player, amt);
                 if (debug) chat("auction bid " + player + " " + Money.format(amt), ChatFormatting.LIGHT_PURPLE);

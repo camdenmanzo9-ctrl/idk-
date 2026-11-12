@@ -18,13 +18,30 @@ public class SettingsScreen extends Screen {
     private enum Section {
         GENERAL("General", "Theme and general options"),
         CHAT("Chat", "How payment messages look in chat"),
-        HUD("Profit HUD", "The box showing today's profit on your screen"),
+        FILTER("Chat filter", "Hide small payments in chat"),
+        HUD("Profit HUD", "The profit of the day box"),
+        STREAK("Win streak", "Win streak counter (/win, /lose or keybinds)"),
         POPUP("Popup alert", "The alert for big payments you receive"),
+        STYLE("Popup style", "Animations and looks of the popup alert"),
         SOUNDS("Sounds", "Sound effects for alerts and confirmations"),
-        PAY("Pay confirm", "The screen that asks before a big /pay");
+        PAY("Pay confirm", "The screen that asks before a big /pay (you press Enter)");
 
         final String label, about;
         Section(String label, String about) { this.label = label; this.about = about; }
+
+        int color() {
+            return switch (this) {
+                case GENERAL -> 0xFF5A5E68;
+                case CHAT -> 0xFF3F8A2C;
+                case FILTER -> 0xFF2D6290;
+                case HUD -> 0xFF8F7A1C;
+                case STREAK -> 0xFF9A5418;
+                case POPUP -> 0xFF8E2F7E;
+                case STYLE -> 0xFF8E4C80;
+                case SOUNDS -> 0xFF1F7A80;
+                case PAY -> 0xFF8A2E2E;
+            };
+        }
     }
 
     private enum Kind { TOGGLE, STEPPER, PICKER, COLOR, ACTION }
@@ -96,20 +113,71 @@ public class SettingsScreen extends Screen {
         Settings s = Settings.S;
         switch (section) {
             case GENERAL -> {
-                color("Accent", () -> s.accent, v -> s.accent = v, false);
-                picker("Theme", () -> PaymentLedger.isChristmas() ? "Christmas" : "Classic",
-                        () -> PaymentLedger.setChristmas(!PaymentLedger.isChristmas()),
-                        () -> PaymentLedger.setChristmas(!PaymentLedger.isChristmas()));
+                picker("Theme", () -> Settings.THEMES[Math.floorMod(s.themeIndex, Settings.THEMES.length)],
+                        () -> Settings.applyTheme(s.themeIndex - 1), () -> Settings.applyTheme(s.themeIndex + 1));
+                picker("Background", () -> s.bgGradient ? "Gradient" : "Solid",
+                        () -> s.bgGradient = !s.bgGradient, () -> s.bgGradient = !s.bgGradient);
+                color("Top color", () -> s.bgTop, v -> { s.bgTop = v; s.themeIndex = Settings.THEMES.length - 1; }, true);
+                color("Bottom color", () -> s.bgBottom, v -> { s.bgBottom = v; s.themeIndex = Settings.THEMES.length - 1; }, true);
+                stepper("Opacity", () -> s.bgOpacity + "%", () -> s.bgOpacity = clampI(s.bgOpacity - 5, 30, 100),
+                        () -> s.bgOpacity = clampI(s.bgOpacity + 5, 30, 100));
+                stepper("Brightness", () -> (s.bgBrightness >= 0 ? "+" : "") + s.bgBrightness + "%",
+                        () -> s.bgBrightness = clampI(s.bgBrightness - 5, 0, 50), () -> s.bgBrightness = clampI(s.bgBrightness + 5, 0, 50));
+                stepper("Dim game", () -> s.dimGame + "%", () -> s.dimGame = clampI(s.dimGame - 5, 0, 95),
+                        () -> s.dimGame = clampI(s.dimGame + 5, 0, 95));
                 toggle("Skin faces", () -> s.skinFaces, v -> s.skinFaces = v);
                 action("Reset all settings", () -> { Settings.resetAll(); rebuildWidgets(); });
             }
             case CHAT -> {
                 toggle("Chat colors", () -> s.chatColors, v -> s.chatColors = v);
-                color("Received $", () -> s.receivedColor, v -> s.receivedColor = v, false);
+                toggle("Count tax in profit", () -> s.countTax, v -> s.countTax = v);
                 color("Name", () -> s.nameColor, v -> s.nameColor = v, false);
+                color("Received $", () -> s.receivedColor, v -> s.receivedColor = v, false);
                 color("Sent $", () -> s.sentColor, v -> s.sentColor = v, false);
+                color("Tax text", () -> s.taxColor, v -> s.taxColor = v, false);
+                toggle("Color the tax", () -> s.colorTax, v -> s.colorTax = v);
                 toggle("Bold names", () -> s.boldNames, v -> s.boldNames = v);
                 toggle("Bold amounts", () -> s.boldAmounts, v -> s.boldAmounts = v);
+                stepper("Tax %", () -> String.valueOf(s.taxPct), () -> s.taxPct = clamp(s.taxPct - 0.5f, 0f, 20f),
+                        () -> s.taxPct = clamp(s.taxPct + 0.5f, 0f, 20f));
+            }
+            case FILTER -> {
+                toggle("Hide small", () -> s.filterOn, v -> s.filterOn = v);
+                picker("Hide under", () -> Money.format(s.filterUnder), () -> s.filterUnder = Settings.stepSmall(s.filterUnder, -1),
+                        () -> s.filterUnder = Settings.stepSmall(s.filterUnder, 1));
+                toggle("Hide received", () -> s.filterReceived, v -> s.filterReceived = v);
+                toggle("Hide sent", () -> s.filterSent, v -> s.filterSent = v);
+            }
+            case STREAK -> {
+                toggle("Show streak", () -> s.streakShow, v -> s.streakShow = v);
+                toggle("Separate HUD", () -> s.streakSeparate, v -> s.streakSeparate = v);
+                toggle("/win and /lose", () -> s.streakCommands, v -> s.streakCommands = v);
+                stepper("Size", () -> s.streakSize + "x", () -> s.streakSize = clamp(s.streakSize - 0.1f, 0.5f, 2f),
+                        () -> s.streakSize = clamp(s.streakSize + 0.1f, 0.5f, 2f));
+                toggle("Accent bar", () -> s.streakAccent, v -> s.streakAccent = v);
+                toggle("Border", () -> s.streakBorder, v -> s.streakBorder = v);
+                stepper("Opacity", () -> s.streakOpacity + "%", () -> s.streakOpacity = clampI(s.streakOpacity - 5, 0, 100),
+                        () -> s.streakOpacity = clampI(s.streakOpacity + 5, 0, 100));
+                action("Reset streak", Alerts::resetStreak);
+            }
+            case STYLE -> {
+                String[] anims = {"Pop", "Slide", "Fade"};
+                picker("Animation", () -> anims[Math.floorMod(s.popupAnim, 3)], () -> s.popupAnim = Math.floorMod(s.popupAnim - 1, 3),
+                        () -> s.popupAnim = Math.floorMod(s.popupAnim + 1, 3));
+                stepper("Opacity", () -> s.popupOpacity + "%", () -> s.popupOpacity = clampI(s.popupOpacity - 5, 20, 100),
+                        () -> s.popupOpacity = clampI(s.popupOpacity + 5, 20, 100));
+                stepper("Border width", () -> s.popupBorderW + "px", () -> s.popupBorderW = clampI(s.popupBorderW - 1, 1, 4),
+                        () -> s.popupBorderW = clampI(s.popupBorderW + 1, 1, 4));
+                stepper("Glow", () -> s.popupGlowPct + "%", () -> s.popupGlowPct = clampI(s.popupGlowPct - 10, 0, 100),
+                        () -> s.popupGlowPct = clampI(s.popupGlowPct + 10, 0, 100));
+                stepper("Sparkles", () -> String.valueOf(s.popupSparkleCount), () -> s.popupSparkleCount = clampI(s.popupSparkleCount - 1, 0, 30),
+                        () -> s.popupSparkleCount = clampI(s.popupSparkleCount + 1, 0, 30));
+                toggle("+ before amount", () -> s.popupPlus, v -> s.popupPlus = v);
+                toggle("Count-up amount", () -> s.popupCountUp, v -> s.popupCountUp = v);
+                toggle("Face bounce", () -> s.popupFaceBounce, v -> s.popupFaceBounce = v);
+                toggle("Timer bar", () -> s.popupTimerBar, v -> s.popupTimerBar = v);
+                color("Timer color", () -> s.popupTimerColor, v -> s.popupTimerColor = v, false);
+                action("Test popup (closes menu)", () -> { Alerts.testPopup(); if (minecraft != null) minecraft.setScreen(null); });
             }
             case HUD -> {
                 toggle("Show HUD", () -> s.hudShow, v -> s.hudShow = v);
@@ -131,6 +199,7 @@ public class SettingsScreen extends Screen {
             }
             case POPUP -> {
                 toggle("Show popup", () -> s.popupShow, v -> s.popupShow = v);
+                toggle("Skin face", () -> s.popupFace, v -> s.popupFace = v);
                 picker("Min", () -> Money.format(s.popupMin), () -> s.popupMin = Settings.stepMoney(s.popupMin, -1),
                         () -> s.popupMin = Settings.stepMoney(s.popupMin, 1));
                 stepper("Duration", () -> s.popupDuration + "s", () -> s.popupDuration = clamp(s.popupDuration - 0.5f, 1f, 10f),
@@ -193,52 +262,57 @@ public class SettingsScreen extends Screen {
     }
 
     // ---------------- layout ----------------
+    private static final int ROW_H = 20, ROW_GAP = 5;
+
     @Override
     protected void init() {
-        ww = Math.min(width - 80, 430);
-        wh = Math.min(height - 40, 270);
+        openedAt = System.currentTimeMillis();
+        ww = Math.min(width - 60, 460);
+        wh = Math.min(height - 24, 280);
         wx = (width - ww) / 2;
         wy = (height - wh) / 2;
 
         sideButtons.clear();
         sideSections.clear();
-        int by = wy + 30;
+        int by = wy + 36;   // below the title and rainbow line
         for (Section sec : Section.values()) {
             Button b = addRenderableWidget(Button.builder(Component.literal(sec.label), btn -> {
                 section = sec;
                 rebuildWidgets();
-            }).bounds(wx + 8, by, 96, 18).build());
+            }).bounds(wx + 12, by, 102, 18).build());
             sideButtons.add(b);
             sideSections.add(sec);
-            by += 22;
+            by += 21;
         }
-        doneButton = addRenderableWidget(Button.builder(Component.literal("Done"), b -> onClose())
-                .bounds(wx + 8, wy + wh - 26, 96, 18).build());
+        doneButton = addRenderableWidget(Button.builder(Component.literal("Move HUDs"), b -> {
+            if (minecraft != null) minecraft.setScreen(new MoveHudsScreen(this));
+        })
+                .bounds(wx + 12, wy + wh - 28, 102, 18).build());
 
         buildRows();
-        int cx = wx + 114, cw = ww - 122, colW = (cw - 6) / 2, rowH = 18, gap = 4;
-        int y0 = wy + 44;
+        int cx = wx + 130, cw = ww - 140, colW = (cw - 8) / 2;
+        int y0 = wy + 52;
         for (int i = 0; i < rows.size(); i++) {
             Row r = rows.get(i);
             int col = i % 2, line = i / 2;
-            r.x = cx + col * (colW + 6);
-            r.y = y0 + line * (rowH + gap);
+            r.x = cx + col * (colW + 8);
+            r.y = y0 + line * (ROW_H + ROW_GAP);
             r.w = colW;
             switch (r.kind) {
-                case TOGGLE -> r.b1 = invisible(r.x, r.y, r.w, rowH, () -> { r.setOn.accept(!r.on.getAsBoolean()); Settings.save(); });
+                case TOGGLE -> r.b1 = invisible(r.x, r.y, r.w, ROW_H, () -> { r.setOn.accept(!r.on.getAsBoolean()); Settings.save(); });
                 case STEPPER -> {
-                    r.b1 = invisible(r.x + r.w - 70, r.y + 2, 14, 14, () -> { r.minus.run(); Settings.save(); });
-                    r.b2 = invisible(r.x + r.w - 18, r.y + 2, 14, 14, () -> { r.plus.run(); Settings.save(); });
+                    r.b1 = invisible(r.x + r.w - 66, r.y + 3, 14, 14, () -> { r.minus.run(); Settings.save(); });
+                    r.b2 = invisible(r.x + r.w - 20, r.y + 3, 14, 14, () -> { r.plus.run(); Settings.save(); });
                 }
                 case PICKER -> {
-                    r.b1 = invisible(r.x, r.y, r.w / 2, rowH, () -> { r.minus.run(); Settings.save(); });
-                    r.b2 = invisible(r.x + r.w / 2, r.y, r.w - r.w / 2, rowH, () -> { r.plus.run(); Settings.save(); });
+                    r.b1 = invisible(r.x, r.y, r.w / 2, ROW_H, () -> { r.minus.run(); Settings.save(); });
+                    r.b2 = invisible(r.x + r.w / 2, r.y, r.w - r.w / 2, ROW_H, () -> { r.plus.run(); Settings.save(); });
                 }
-                case COLOR -> r.b1 = invisible(r.x + r.w - 92, r.y + 1, 88, 16, () -> {
+                case COLOR -> r.b1 = invisible(r.x + r.w - 98, r.y + 3, 92, 14, () -> {
                     r.setColor.accept(Settings.nextColor(r.color.getAsInt(), r.bg));
                     Settings.save();
                 });
-                case ACTION -> r.b1 = invisible(r.x, r.y, r.w, rowH, r.action);
+                case ACTION -> r.b1 = invisible(r.x, r.y, r.w, ROW_H, r.action);
             }
         }
     }
@@ -251,10 +325,66 @@ public class SettingsScreen extends Screen {
         return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
-    // ---------------- drawing ----------------
+    // ---------------- drawing (dark charcoal style, Minecraft font) ----------------
+    private static final int WIN_BG = 0xF5171717, HEADER = 0xFF1B1B1B, ROW_BG = 0xFF262626, ROW_HOVER = 0xFF2E2E2E,
+            T_TEXT = 0xFFF0F0F0, T_MUTED = 0xFFB4B4B4, T_DIM = 0xFF8C8C8C, YELLOW = 0xFFE8C547;
+
+    private long openedAt = System.currentTimeMillis();   // for the slide-in animation
+
+    private static int alpha(int c, float a) {
+        int base = (c >>> 24) & 0xFF;
+        return (Math.max(0, Math.min(255, (int) (base * a))) << 24) | (c & 0xFFFFFF);
+    }
+
+    private static int lighten(int c, float t) {
+        int r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
+        r += (int) ((255 - r) * t); g += (int) ((255 - g) * t); b += (int) ((255 - b) * t);
+        return 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    private static int rainbow(double t) {
+        double h = (t % 1 + 1) % 1 * 6;
+        int i = (int) h;
+        double fr = h - i;
+        int q = (int) (255 * (1 - fr)), tt = (int) (255 * fr);
+        int r, gg, b;
+        switch (i) {
+            case 0 -> { r = 255; gg = tt; b = 0; }
+            case 1 -> { r = q; gg = 255; b = 0; }
+            case 2 -> { r = 0; gg = 255; b = tt; }
+            case 3 -> { r = 0; gg = q; b = 255; }
+            case 4 -> { r = tt; gg = 0; b = 255; }
+            default -> { r = 255; gg = 0; b = q; }
+        }
+        return 0xFF000000 | (r << 16) | (gg << 8) | b;
+    }
+
+    private void txt(GuiGraphicsExtractor g, String s, int x, int y, int color) {
+        if (((color >>> 24) & 0xFF) < 8) return;   // fully faded: skip
+        g.text(font, s, x, y, color, false);
+    }
+
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
-        g.fill(0, 0, width, height, 0x88000000);
+        g.fill(0, 0, width, height, (Math.min(255, Settings.S.dimGame * 255 / 100) << 24));
+    }
+
+    private static int bright(int rgb) {
+        return lighten(0xFF000000 | rgb, Settings.S.bgBrightness / 100f) & 0xFFFFFF;
+    }
+
+    private void windowBackground(GuiGraphicsExtractor g) {
+        Settings st = Settings.S;
+        int a = Math.max(0, Math.min(255, st.bgOpacity * 255 / 100));
+        int top = bright(st.bgTop), bot = bright(st.bgGradient ? st.bgBottom : st.bgTop);
+        // a near-black theme still needs to read as a panel: keep at least a charcoal floor
+        for (int yy = 0; yy < wh; yy += 2) {
+            float t = yy / (float) Math.max(1, wh);
+            int r = (int) (((top >> 16) & 0xFF) + ((((bot >> 16) & 0xFF) - ((top >> 16) & 0xFF)) * t));
+            int gg = (int) (((top >> 8) & 0xFF) + ((((bot >> 8) & 0xFF) - ((top >> 8) & 0xFF)) * t));
+            int b = (int) ((top & 0xFF) + (((bot & 0xFF) - (top & 0xFF)) * t));
+            g.fill(wx, wy + yy, wx + ww, Math.min(wy + wh, wy + yy + 2), (a << 24) | (r << 16) | (gg << 8) | b);
+        }
     }
 
     private void outline(GuiGraphicsExtractor g, int x, int y, int w, int h, int c) {
@@ -264,100 +394,146 @@ public class SettingsScreen extends Screen {
         g.fill(x + w - 1, y, x + w, y + h, c);
     }
 
+    /** Box with softly cut corners. */
+    private void soft(GuiGraphicsExtractor g, int x, int y, int w, int h, int fill) {
+        g.fill(x + 1, y, x + w - 1, y + h, fill);
+        g.fill(x, y + 1, x + w, y + h - 1, fill);
+    }
+
+    /** Eased 0..1 progress for row i of the slide-in (top row first). */
+    private float rowProgress(int i) {
+        long t = System.currentTimeMillis() - openedAt - i * 45L;
+        float p = Math.max(0f, Math.min(1f, t / 220f));
+        return 1f - (1f - p) * (1f - p) * (1f - p);
+    }
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
-        int acc = accent();
+        int secCol = section.color();
 
-        // window, header, sidebar (drawn over the vanilla buttons, which still take the clicks)
-        g.fill(wx, wy, wx + ww, wy + wh, WIN);
-        outline(g, wx, wy, ww, wh, acc);
-        g.fill(wx + 1, wy + 1, wx + ww - 1, wy + 22, HEAD);
-        g.fill(wx + 1, wy + 22, wx + ww - 1, wy + 23, acc);
-        g.text(font, "Dashboard Mod", wx + 10, wy + 8, acc, false);
-        g.fill(wx + 110, wy + 23, wx + 111, wy + wh - 1, acc);
+        // window + header with title and a slowly shifting rainbow line
+        windowBackground(g);
+        g.fill(wx, wy, wx + ww, wy + 26, HEADER);
+        g.pose().pushMatrix();
+        g.pose().translate(wx + 10, wy + 8);
+        g.pose().scale(1.35f, 1.35f);
+        g.text(font, "Snowy's Dashboard", 0, 0, T_TEXT, false);
+        g.pose().popMatrix();
+        double t0 = System.currentTimeMillis() / 4000.0;
+        for (int px = 0; px < ww; px++) g.fill(wx + px, wy + 26, wx + px + 1, wy + 28, rainbow(t0 + px / (double) ww));
+        g.fill(wx + 122, wy + 28, wx + 123, wy + wh, 0xFF2C2C2C);
 
+        // sidebar: every section has its own color
         for (int i = 0; i < sideButtons.size(); i++) {
             Button b = sideButtons.get(i);
-            boolean sel = sideSections.get(i) == section;
-            sideButton(g, b, b.getMessage().getString(), sel, mouseX, mouseY);
+            sideButton(g, b, b.getMessage().getString(), sideSections.get(i), sideSections.get(i) == section, mouseX, mouseY);
         }
-        sideButton(g, doneButton, "Done", false, mouseX, mouseY);
+        {
+            Button b = doneButton;
+            int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+            boolean hover = over(mouseX, mouseY, x, y, w, h);
+            soft(g, x, y, w, h, hover ? 0xFF5A5A5A : 0xFF444444);
+            txt(g, "Move HUDs", x + (w - font.width("Move HUDs")) / 2, y + (h - 8) / 2, T_TEXT);
+        }
 
-        g.text(font, section.about, wx + 114, wy + 30, MUTED, false);
-        for (Row r : rows) drawRow(g, r, mouseX, mouseY);
+        // section description with a colored underline (slides in first)
+        int cx = wx + 130, cw = ww - 140;
+        float pHead = rowProgress(0);
+        int hy = wy + 34 + (int) ((1 - pHead) * -6);
+        txt(g, section.about, cx, hy, alpha(T_MUTED, pHead));
+        g.fill(cx, hy + 11, cx + (int) (cw * pHead), hy + 12, alpha(lighten(secCol, 0.25f), pHead));
 
+        // rows slide in one after another, top to bottom
+        for (int i = 0; i < rows.size(); i++) drawRow(g, rows.get(i), mouseX, mouseY, rowProgress(i + 1));
         if (section == Section.CHAT) drawChatPreview(g);
+        if (section == Section.FILTER) {
+            Settings st = Settings.S;
+            int last = rows.isEmpty() ? wy + 52 : rows.get(rows.size() - 1).y + 32;
+            String a = st.filterOn ? "Filter is on: payments under " + Money.format(st.filterUnder) + " are hidden."
+                    : "Filter is off: all payments are shown.";
+            txt(g, a, wx + 130, last, T_TEXT);
+            txt(g, "Hidden payments still count for the profit and the popup.", wx + 130, last + 12, T_DIM);
+        }
 
-        String tip = "Click a color to change it, < > to pick";
-        g.text(font, tip, wx + 114, wy + wh - 12, MUTED, false);
+        txt(g, "Tip: click a color square to cycle colors, click < > to pick", cx, wy + wh - 12, T_DIM);
     }
 
-    private void sideButton(GuiGraphicsExtractor g, Button b, String label, boolean selected, int mx, int my) {
+    private void sideButton(GuiGraphicsExtractor g, Button b, String label, Section sec, boolean selected, int mx, int my) {
         int x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
         boolean hover = over(mx, my, x, y, w, h);
-        int base = Settings.S.accent;
-        g.fill(x, y, x + w, y + h, selected ? mix(base, 0.55f) : hover ? mix(base, 0.35f) : mix(base, 0.22f));
-        outline(g, x, y, w, h, selected ? accent() : mix(base, 0.4f));
-        g.text(font, label, x + (w - font.width(label)) / 2, y + (h - 8) / 2, TEXT, false);
+        int base = sec.color();
+        int fill = selected ? lighten(base, 0.18f) : hover ? mix(base, 0.85f) : mix(base, 0.62f);
+        soft(g, x, y, w, h, fill);
+        if (selected) {
+            outline(g, x, y, w, h, lighten(base, 0.5f));
+            g.fill(x - 6, y + 2, x - 4, y + h - 2, lighten(base, 0.55f));   // marker on the left edge
+        }
+        txt(g, label, x + (w - font.width(label)) / 2, y + (h - 8) / 2, selected || hover ? 0xFFFFFFFF : 0xFFE6E6E6);
     }
 
-    private void drawRow(GuiGraphicsExtractor g, Row r, int mx, int my) {
-        int x = r.x, y = r.y, w = r.w, h = 18, acc = accent();
-        boolean hover = over(mx, my, x, y, w, h);
+    private void drawRow(GuiGraphicsExtractor g, Row r, int mx, int my, float p) {
+        if (p <= 0.01f) return;
+        int x = r.x, w = r.w, h = ROW_H;
+        int y = r.y + (int) ((1 - p) * -10);    // drops into place
+        boolean hover = over(mx, my, r.x, r.y, w, h);
+        int ty = y + (h - 8) / 2;
         if (r.kind == Kind.ACTION) {
-            g.fill(x, y, x + w, y + h, hover ? mix(Settings.S.accent, 0.45f) : mix(Settings.S.accent, 0.3f));
-            g.text(font, r.label, x + (w - font.width(r.label)) / 2, y + 5, TEXT, false);
+            soft(g, x, y, w, h, alpha(hover ? 0xFF4A4A4A : 0xFF3A3A3A, p));
+            txt(g, r.label, x + (w - font.width(r.label)) / 2, ty, alpha(T_MUTED, p));
             return;
         }
-        g.fill(x, y, x + w, y + h, ROW);
+        soft(g, x, y, w, h, alpha(hover ? ROW_HOVER : ROW_BG, p));
         switch (r.kind) {
             case TOGGLE -> {
-                g.text(font, r.label, x + 6, y + 5, TEXT, false);
+                txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
                 boolean on = r.on.getAsBoolean();
-                int sx = x + w - 30, sy = y + 4;
-                g.fill(sx, sy, sx + 24, sy + 10, on ? acc : OFF);
-                int kx = on ? sx + 15 : sx + 1;
-                g.fill(kx, sy + 1, kx + 8, sy + 9, KNOB);
+                int sw = 24, sh = 11, sx = x + w - sw - 8, sy = y + (h - sh) / 2;
+                if (on) {
+                    soft(g, sx, sy, sw, sh, alpha(0xFFEDEDED, p));
+                } else {
+                    soft(g, sx, sy, sw, sh, alpha(0xFF3C3C48, p));
+                    g.fill(sx + 2, sy + 2, sx + 10, sy + sh - 2, alpha(0xFFE6E6E6, p));
+                }
             }
             case STEPPER -> {
-                g.text(font, r.label, x + 6, y + 5, TEXT, false);
-                drawSmallBox(g, x + w - 70, y + 2, "-", over(mx, my, x + w - 70, y + 2, 14, 14));
-                drawSmallBox(g, x + w - 18, y + 2, "+", over(mx, my, x + w - 18, y + 2, 14, 14));
+                txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
+                smallBox(g, x + w - 66, y + 3, "-", over(mx, my, x + w - 66, r.y + 3, 14, 14), p);
+                smallBox(g, x + w - 20, y + 3, "+", over(mx, my, x + w - 20, r.y + 3, 14, 14), p);
                 String v = r.value.get();
-                int vx = x + w - 56, vw = 38;
-                g.text(font, v, vx + (vw - font.width(v)) / 2, y + 5, VALUE, false);
+                int vx = x + w - 52, vw = 32;
+                txt(g, v, vx + (vw - font.width(v)) / 2, ty, alpha(YELLOW, p));
             }
             case PICKER -> {
                 String text = r.label + ": " + r.value.get();
-                g.text(font, "<", x + 6, y + 5, acc, false);
-                g.text(font, ">", x + w - 6 - font.width(">"), y + 5, acc, false);
-                g.text(font, text, x + (w - font.width(text)) / 2, y + 5, TEXT, false);
+                txt(g, "<", x + 8, ty, alpha(T_TEXT, p));
+                txt(g, ">", x + w - 8 - font.width(">"), ty, alpha(T_TEXT, p));
+                txt(g, text, x + (w - font.width(text)) / 2, ty, alpha(T_TEXT, p));
             }
             case COLOR -> {
-                g.text(font, r.label, x + 6, y + 5, TEXT, false);
+                txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
                 int rgb = r.color.getAsInt();
-                int bx = x + w - 92;
-                g.fill(bx, y + 1, bx + 70, y + 17, BOX);
-                outline(g, bx, y + 1, 70, 16, over(mx, my, bx, y + 1, 88, 16) ? acc : 0xFF2A3A55);
-                g.text(font, Settings.hex(rgb), bx + 5, y + 5, TEXT, false);
-                g.fill(bx + 72, y + 1, bx + 88, y + 17, 0xFF000000 | rgb);
-                outline(g, bx + 72, y + 1, 16, 16, 0xFF2A3A55);
+                int bx = x + w - 98;
+                boolean hot = over(mx, my, bx, r.y + 3, 92, 14);
+                g.fill(bx, y + 2, bx + 74, y + 18, alpha(0xFF0A0A0A, p));
+                outline(g, bx, y + 2, 74, 16, alpha(hot ? 0xFFFFFFFF : 0xFFB0B0B0, p));
+                txt(g, Settings.hex(rgb), bx + 5, y + 6, alpha(T_TEXT, p));
+                g.fill(bx + 77, y + 2, bx + 93, y + 18, alpha(0xFF000000 | rgb, p));
             }
             default -> { }
         }
     }
 
-    private void drawSmallBox(GuiGraphicsExtractor g, int x, int y, String s, boolean hover) {
-        g.fill(x, y, x + 14, y + 14, hover ? 0xFF3A5580 : 0xFF2A3A55);
-        g.text(font, s, x + (14 - font.width(s)) / 2, y + 3, TEXT, false);
+    private void smallBox(GuiGraphicsExtractor g, int x, int y, String s, boolean hover, float p) {
+        g.fill(x, y, x + 14, y + 14, alpha(hover ? 0xFF6A6A6A : 0xFF4A4A4A, p));
+        txt(g, s, x + (14 - font.width(s)) / 2 + 1, y + 3, alpha(T_TEXT, p));
     }
 
     private void drawChatPreview(GuiGraphicsExtractor g) {
         Settings s = Settings.S;
-        int last = rows.isEmpty() ? wy + 44 : rows.get(rows.size() - 1).y + 30;
-        int x = wx + 114;
-        g.text(font, "Preview", x, last, MUTED, false);
+        int last = rows.isEmpty() ? wy + 52 : rows.get(rows.size() - 1).y + 32;
+        int x = wx + 130;
+        txt(g, "Preview", x, last, T_MUTED);
         int y1 = last + 12, y2 = last + 24;
         int name = s.chatColors ? 0xFF000000 | s.nameColor : 0xFFFFFFFF;
         int recv = s.chatColors ? 0xFF000000 | s.receivedColor : 0xFFFFFFFF;
@@ -370,7 +546,11 @@ public class SettingsScreen extends Screen {
         cx = seg(g, "You paid ", cx, y2, 0xFFFFFFFF, false);
         cx = seg(g, "ExamplePlayer", cx, y2, name, s.chatColors && s.boldNames);
         cx = seg(g, " ", cx, y2, 0xFFFFFFFF, false);
-        seg(g, "$1M", cx, y2, sent, s.chatColors && s.boldAmounts);
+        cx = seg(g, "$1M", cx, y2, sent, s.chatColors && s.boldAmounts);
+        if (s.taxPct > 0) {
+            long tax = Math.round(1_000_000L * (s.taxPct / 100.0));
+            seg(g, " (+" + Money.format(tax) + " tax)", cx, y2, s.chatColors && s.colorTax ? 0xFF000000 | s.taxColor : 0xFFAAAAAA, false);
+        }
     }
 
     /** Draws one piece of text (fake bold = drawn twice, 1px apart) and returns where the next piece starts. */

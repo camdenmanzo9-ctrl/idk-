@@ -27,7 +27,7 @@ public class DashboardClient implements ClientModInitializer {
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("bettors_dashboard", "main"));
-    private static KeyMapping openKey;
+    private static KeyMapping openKey, winKey, loseKey;
 
     @Override
     public void onInitializeClient() {
@@ -35,6 +35,26 @@ public class DashboardClient implements ClientModInitializer {
         Settings.load();
 
         // Profit box + big-payment popup, drawn on top of the game
+        // Big /pay: hold it and ask first. The mod never sends it: after Confirm the command is
+        // put back in your chat box and you press Enter yourself.
+        ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
+            if (PayConfirmScreen.approved != null && PayConfirmScreen.approved.equals(command.trim())) {
+                PayConfirmScreen.approved = null;   // you already confirmed this exact one
+                return true;
+            }
+            Settings st = Settings.S;
+            String[] a = command.trim().split("\\s+");
+            if (!st.payAsk || a.length < 3 || !a[0].equalsIgnoreCase("pay")) return true;
+            try {
+                long amount = Money.parse(a[2]);
+                if (amount < st.payFrom) return true;
+                PayConfirmScreen.pending = new PayConfirmScreen(command.trim(), a[1], amount, false);
+                return false;
+            } catch (Exception e) {
+                return true;
+            }
+        });
+
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("bettors_dashboard", "alerts"), (g, dt) -> Alerts.render(g));
 
         // Recolor payment messages in chat (only changes how they look on your screen)
@@ -57,25 +77,30 @@ public class DashboardClient implements ClientModInitializer {
             }
         });
 
-        // Big /pay: hold it and ask first. Nothing is sent unless you click Confirm.
-        ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
-            if (PayConfirmScreen.bypass) return true;
-            Settings s = Settings.S;
-            String[] a = command.trim().split("\\s+");
-            if (!s.payAsk || a.length < 3 || !a[0].equalsIgnoreCase("pay")) return true;
-            try {
-                long amount = Money.parse(a[2]);
-                if (amount < s.payFrom) return true;
-                PayConfirmScreen.pending = new PayConfirmScreen(command, a[1], amount, false);
-                return false;
-            } catch (Exception e) {
-                return true;
-            }
-        });
 
         // Default key: B. Change it in Options > Controls > Key Binds > Bettors Dashboard.
         openKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 "key.bettors_dashboard.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, CATEGORY));
+        // Win streak keys (not set by default; pick keys in Controls)
+        winKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.bettors_dashboard.win", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+        loseKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                "key.bettors_dashboard.lose", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, CATEGORY));
+
+        // Chat filter: hide small payments from chat. They are still counted first.
+        ClientReceiveMessageEvents.ALLOW_GAME.register((message, overlay) -> {
+            Settings st = Settings.S;
+            if (overlay || !st.filterOn) return true;
+            String text = message.getString();
+            PaymentListener.Parsed p = PaymentListener.parse(text);
+            if (p == null) return true;
+            if (p.incoming() ? !st.filterReceived : !st.filterSent) return true;
+            long amt;
+            try { amt = Money.parse(p.amountText()); } catch (Exception e) { return true; }
+            if (amt >= st.filterUnder) return true;
+            PaymentListener.handle(text);   // still counts for profit and popups
+            return false;
+        });
 
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
             if (!overlay) PaymentListener.handle(message.getString());
@@ -83,6 +108,8 @@ public class DashboardClient implements ClientModInitializer {
 
         // Commands close the chat screen after running, so the menu opens on the next tick.
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            while (winKey.consumeClick()) if (client.screen == null) Alerts.addWin();
+            while (loseKey.consumeClick()) if (client.screen == null) Alerts.addLoss();
             while (openKey.consumeClick()) {
                 if (client.screen == null) openNextTick = true;
             }
@@ -105,6 +132,18 @@ public class DashboardClient implements ClientModInitializer {
             lastTick = now;
         });
 
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            dispatcher.register(literal("win").executes(ctx -> {
+                if (!Settings.S.streakCommands) { ctx.getSource().sendFeedback(Component.literal("[Bettors] /win is turned off in Settings")); return 1; }
+                Alerts.addWin();
+                return 1;
+            }));
+            dispatcher.register(literal("lose").executes(ctx -> {
+                if (!Settings.S.streakCommands) { ctx.getSource().sendFeedback(Component.literal("[Bettors] /lose is turned off in Settings")); return 1; }
+                Alerts.addLoss();
+                return 1;
+            }));
+        });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
             literal("bettors")
                 .executes(ctx -> { openNextTick = true; return 1; })

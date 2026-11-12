@@ -1,4 +1,6 @@
 {
   "key.category.bettors_dashboard.main": "Snowy's Dashboard",
-  "key.bettors_dashboard.open": "Open Dashboard"
+  "key.bettors_dashboard.open": "Open Dashboard",
+  "key.bettors_dashboard.win": "Add a win (streak)",
+  "key.bettors_dashboard.lose": "Add a loss (streak)"
 }

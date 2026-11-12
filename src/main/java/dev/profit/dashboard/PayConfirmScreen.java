@@ -2,16 +2,17 @@ package dev.profit.dashboard;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * "Are you sure?" screen for big /pay commands. Nothing is sent until you click Confirm,
- * and then it sends exactly the /pay you typed. Cancel (or Esc) throws it away.
+ * "Are you sure?" screen for big /pay commands. The mod never sends anything:
+ * Confirm puts the command back into your chat box and YOU press Enter. Cancel throws it away.
  */
 public class PayConfirmScreen extends Screen {
-    /** Set while we send the confirmed command ourselves, so it isn't stopped a second time. */
-    public static boolean bypass = false;
+    /** The exact command you approved; it is allowed through once when you press Enter. */
+    public static String approved = null;
     /** A /pay waiting for the next tick to open this screen (the chat box has to close first). */
     public static PayConfirmScreen pending = null;
 
@@ -34,7 +35,7 @@ public class PayConfirmScreen extends Screen {
 
     @Override
     protected void init() {
-        int w = 220, h = 120, x = (width - w) / 2, y = (height - h) / 2;
+        int w = 220, h = 124, x = (width - w) / 2, y = (height - h) / 2;
         confirm = addRenderableWidget(Button.builder(Component.literal("Confirm"), b -> doConfirm())
                 .bounds(x + 12, y + h - 30, (w - 36) / 2, 20).build());
         cancel = addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
@@ -48,15 +49,9 @@ public class PayConfirmScreen extends Screen {
     private void doConfirm() {
         if (waitLeft() > 0) return;
         Alerts.playConfirmSound();
-        if (!test && minecraft != null && minecraft.player != null) {
-            bypass = true;
-            try {
-                minecraft.player.connection.sendCommand(command);
-            } finally {
-                bypass = false;
-            }
-        }
-        onClose();
+        if (test || minecraft == null) { onClose(); return; }
+        approved = command;
+        minecraft.setScreen(new ChatScreen("/" + command));   // back in your chat box: press Enter to send it yourself
     }
 
     private static int argb(int rgb, int a) { return (a << 24) | (rgb & 0xFFFFFF); }
@@ -87,7 +82,7 @@ public class PayConfirmScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
         Settings s = Settings.S;
-        int w = 220, h = 120, x = (width - w) / 2, y = (height - h) / 2;
+        int w = 220, h = 124, x = (width - w) / 2, y = (height - h) / 2;
         double t = System.currentTimeMillis() / 1500.0;
 
         g.fill(x, y, x + w, y + h, argb(s.payBg, 255));
@@ -116,8 +111,8 @@ public class PayConfirmScreen extends Screen {
             long tax = Math.round(amount * (s.payTax / 100.0));
             g.text(font, "+" + Money.format(tax) + " tax (" + s.payTax + "%)", x + 12, y + 62, 0xFF9AA0AD, false);
         }
+        g.text(font, "Confirm puts it in chat - you press Enter", x + 12, y + 76, 0xFF8A8F94, false);
 
-        // buttons drawn over the vanilla ones (those still take the clicks)
         long left = waitLeft();
         drawButton(g, confirm, left > 0 ? "Wait " + String.format("%.1f", left / 1000.0) + "s" : "Confirm",
                 left > 0 ? 0x555555 : s.payConfirm, mouseX, mouseY);
