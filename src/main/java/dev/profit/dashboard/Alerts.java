@@ -144,15 +144,11 @@ public final class Alerts {
             new FontDescription.Resource(Identifier.fromNamespaceAndPath("bettors_dashboard", "inter_bold")));
 
     private static void itext(GuiGraphicsExtractor g, Font f, String s, int x, int y, int color, float scale, boolean bold) {
-        g.pose().pushMatrix();
-        g.pose().translate(x, y);
-        g.pose().scale(scale, scale);
-        g.text(f, Component.literal(s).withStyle(bold ? INTER_BOLD : INTER), 0, 0, color, false);
-        g.pose().popMatrix();
+        Fonts.draw(g, f, s, x, y, color, scale, bold);
     }
 
     private static int iw(Font f, String s, float scale, boolean bold) {
-        return (int) Math.ceil(f.width(Component.literal(s).withStyle(bold ? INTER_BOLD : INTER)) * scale);
+        return Fonts.width(f, s, scale, bold);
     }
 
     private static void centered(GuiGraphicsExtractor g, Font f, String s, int cx, int y, int color, float scale, boolean bold) {
@@ -166,7 +162,7 @@ public final class Alerts {
 
         int w = 104, h = 96;
         int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
-        int x = sw - w - 8, y = sh / 2 - h / 2;
+        int x = (sw - w) / 2, y = 6;   // top middle of the screen
         int cx = x + w / 2;
 
         // soft rounded panel
@@ -253,7 +249,9 @@ public final class Alerts {
         String amt = "+" + Money.format(current.amount);
         String line = current.name + " paid you";
         int w = Math.max(180, Math.max(f.width(amt) * 2 + 30, f.width(line) + 30)), h = 54;
-        int x = (sw - w) / 2, y = 24 - (int) ((1 - in) * 14);
+        boolean auctionShowing = (Auction.running || (Auction.ended && now - Auction.endAt < 6000)) && !Auction.item.isEmpty();
+        int baseY = auctionShowing ? (int) (110 / sc) : 24;
+        int x = (sw - w) / 2, y = baseY - (int) ((1 - in) * 14);
 
         g.pose().pushMatrix();
         g.pose().scale(sc, sc);

@@ -72,15 +72,11 @@ public class OverviewScreen extends Screen {
     }
 
     private void text(GuiGraphicsExtractor g, String s, int x, int y, int color, float scale, boolean bold) {
-        g.pose().pushMatrix();
-        g.pose().translate(x, y);
-        g.pose().scale(scale, scale);
-        g.text(font, c(s, bold), 0, 0, color, false);
-        g.pose().popMatrix();
+        Fonts.draw(g, font, s, x, y, color, scale, bold);
     }
 
-    private int w(String s, float scale) { return (int) Math.ceil(font.width(c(s, false)) * scale); }
-    private int wb(String s, float scale) { return (int) Math.ceil(font.width(c(s, true)) * scale); }
+    private int w(String s, float scale) { return Fonts.width(font, s, scale, false); }
+    private int wb(String s, float scale) { return Fonts.width(font, s, scale, true); }
 
     private int caps(GuiGraphicsExtractor g, String s, int x, int y, int color) {
         int cx = x;
