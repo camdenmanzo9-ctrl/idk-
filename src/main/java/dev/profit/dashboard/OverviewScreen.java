@@ -83,14 +83,14 @@ public class OverviewScreen extends Screen {
         for (char ch : s.toCharArray()) {
             String t = String.valueOf(ch);
             text(g, t, cx, y, color, 0.76f, true);
-            cx += wb(t, 0.76f) + 1;
+            cx += wb(t, 0.76f);
         }
         return cx - x;
     }
 
     private int capsW(String s) {
         int t = 0;
-        for (char ch : s.toCharArray()) t += wb(String.valueOf(ch), 0.76f) + 1;
+        for (char ch : s.toCharArray()) t += wb(String.valueOf(ch), 0.76f);
         return t;
     }
 
@@ -115,6 +115,7 @@ public class OverviewScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         scroll = Math.max(0, scroll - (int) Math.signum(scrollY) * 3);
+        if (tab == 3 || (tab == 1 && wlPlayer == null)) rebuildWidgets();
         return true;
     }
 
@@ -130,7 +131,12 @@ public class OverviewScreen extends Screen {
 
     @Override
     protected void init() {
-        fx = 8; fy = 6; fw = width - 16; fh = height - 12;
+        // inset like the reference: dark space all around, and it stops growing on very wide screens
+        int mx = Math.max(14, width / 26), my = Math.max(10, height / 22);
+        fw = Math.min(width - mx * 2, 980);
+        fh = height - my * 2;
+        fx = (width - fw) / 2;
+        fy = my;
         rangeButtons.clear();
         tabButtons.clear();
         filterButtons.clear();
@@ -153,6 +159,10 @@ public class OverviewScreen extends Screen {
         escX = bx - 4 - setW - 8;   // "ESC close" is drawn here
         settingsButton = null;
         searchBox = null;
+        sessionDelButtons.clear();
+        clearSessionsBtn = null;
+        wlRows.clear();
+        wlBack = null;
         itemSearch = null;
         auctionButtons.clear();
 
@@ -173,7 +183,7 @@ public class OverviewScreen extends Screen {
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int t = i;
             int bw = w(TAB_LABELS[i], 0.75f) + pad;
-            tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; rebuildWidgets(); }));
+            tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; wlPlayer = null; rebuildWidgets(); }));
             tx += bw + gap;
         }
 
@@ -191,8 +201,12 @@ public class OverviewScreen extends Screen {
                 filterButtons.add(0, btn(f[i], px - pw, feed[1] + 6, pw, () -> filter = idx));
                 px -= pw + 3;
             }
+        } else if (tab == 1 && wlPlayer != null) {
+            int bw = w("All players", 0.8f) + 26;
+            wlBack = btn("All players", fx + 10, contentY() + 4, bw, () -> { wlPlayer = null; scroll = 0; rebuildWidgets(); });
+            wlBack.setHeight(18);
         } else if (tab == 1 || tab == 2) {
-            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 26;
+            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 30;
             searchBox = new EditBox(font, -4000, -4000, 200, 12, Component.literal("Search"));   // hidden: we draw it ourselves
             searchBox.setMaxLength(32);
             searchBox.setValue(search);
@@ -200,6 +214,7 @@ public class OverviewScreen extends Screen {
             addWidget(searchBox);
             Button click = btn("", sbx, sby, sbw, () -> pendingFocus = searchBox);
             click.setHeight(26);
+            if (tab == 1) addWinLossRowButtons();
         } else if (tab == 4) {
             initAuctions();
         } else if (tab == 5) {
@@ -217,7 +232,8 @@ public class OverviewScreen extends Screen {
         } else if (tab == 3) {
             int bw = w("START SESSION", 0.85f) + 24;
             sessionButton = addRenderableWidget(Button.builder(Component.literal(""), b -> onSession())
-                    .bounds(fx + fw - 10 - bw - 10, contentY() + 18, bw, 16).build());
+                    .bounds(fx + fw - 10 - bw - 10, contentY() + 20, bw, 18).build());
+            addSessionRowButtons();
         }
     }
 
@@ -234,6 +250,173 @@ public class OverviewScreen extends Screen {
         return previewPlayer;
     }
 
+    // ---- past-session delete buttons (same layout math as drawSessions) ----
+    private final java.util.Map<Button, Integer> sessionDelButtons = new java.util.LinkedHashMap<>();
+    private Button clearSessionsBtn;
+    private int pendingDel = -2;          // which row is waiting for the 2nd click (-1 = clear all)
+    private long pendingUntil = 0;
+    private static final int S_CARD_H = 60, S_ROW_H = 18;
+
+    private int sPanelY() { return contentY() + S_CARD_H + 8; }
+    private int sRowsY() { return sPanelY() + 44; }
+    private int sVisible() { return Math.max(1, (contentBottom() - 6 - sRowsY()) / S_ROW_H); }
+
+    private void addSessionRowButtons() {
+        sessionDelButtons.clear();
+        int x = fx + 10, cw = fw - 20;
+        int size = PaymentLedger.history().size();
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, size - sVisible())));
+        clearSessionsBtn = size > 0 ? btn("Clear all", x + cw - 10 - (w("Clear all", 0.76f) + 18), sPanelY() + 6,
+                w("Clear all", 0.76f) + 18, () -> armOrRun(-1, () -> { PaymentLedger.clearHistory(); rebuildWidgets(); })) : null;
+        for (int i = 0; i < sVisible() && scroll + i < size; i++) {
+            final int idx = scroll + i;
+            Button b = btn("", x + cw - 26, sRowsY() + i * S_ROW_H - 1, 16,
+                    () -> armOrRun(idx, () -> { PaymentLedger.deleteSession(idx); rebuildWidgets(); }));
+            sessionDelButtons.put(b, idx);
+        }
+    }
+
+    /** First click arms it (turns red, "Sure?"), a second click within 3 seconds does it. */
+    private void armOrRun(int key, Runnable action) {
+        long now = System.currentTimeMillis();
+        if (pendingDel == key && now < pendingUntil) { pendingDel = -2; action.run(); }
+        else { pendingDel = key; pendingUntil = now + 3000; }
+    }
+
+    // ---- Win / Loss: click a player to open their page ----
+    private static String wlPlayer = null;
+    private Button wlBack;
+    private final java.util.Map<Button, String> wlRows = new java.util.LinkedHashMap<>();
+
+    /** The Win / Loss list in display order (search applied), shared by drawing and click areas. */
+    private List<PaymentLedger.Entry> winLossList() {
+        List<PaymentLedger.Entry> all = new ArrayList<>();
+        String q = search.trim().toLowerCase(Locale.US);
+        for (PaymentLedger.Entry e : PaymentLedger.entries(false))
+            if (q.isEmpty() || e.name.toLowerCase(Locale.US).contains(q)) all.add(e);
+        all.sort(Comparator.comparingLong(PaymentLedger.Entry::net).reversed());
+        return all;
+    }
+
+    private int wlTableY() { return contentY() + 30 + 34; }
+    private int wlRowsY() { return wlTableY() + 8 + 15; }
+    private static final int WL_ROW_H = 16;
+    private int wlVisible() { return Math.max(1, (contentBottom() - 4 - wlRowsY()) / WL_ROW_H); }
+
+    private void addWinLossRowButtons() {
+        wlRows.clear();
+        List<PaymentLedger.Entry> all = winLossList();
+        int px = fx + 10, pw = fw - 20;
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, all.size() - wlVisible())));
+        for (int i = 0; i < wlVisible() && scroll + i < all.size(); i++) {
+            String name = all.get(scroll + i).name;
+            Button b = btn("", px + 4, wlRowsY() + i * WL_ROW_H - 3, pw - 12, () -> { wlPlayer = name; scroll = 0; rebuildWidgets(); });
+            b.setHeight(WL_ROW_H);
+            wlRows.put(b, name);
+        }
+    }
+
+    /** Esc on a player page goes back to the list instead of closing. */
+    @Override
+    public void onClose() {
+        if (tab == 1 && wlPlayer != null) { wlPlayer = null; scroll = 0; rebuildWidgets(); return; }
+        super.onClose();
+    }
+
+    private static String ago(long ts) {
+        long m = Math.max(0, (System.currentTimeMillis() - ts) / 60000);
+        if (m < 1) return "just now";
+        if (m < 60) return m + "m ago";
+        long h = m / 60;
+        if (h < 24) return h + "h ago";
+        return (h / 24) + "d ago";
+    }
+
+    private void drawPlayerPage(GuiGraphicsExtractor g, int mx, int my) {
+        String name = wlPlayer;
+        PaymentLedger.Entry all = PaymentLedger.allTimeFor(name);
+        List<PaymentLedger.Payment> pays = PaymentLedger.paymentsFor(name, 0);   // newest first
+        List<PaymentLedger.Payment> oldest = new ArrayList<>(pays);
+        java.util.Collections.reverse(oldest);
+
+        // back button
+        {
+            Button b = wlBack;
+            boolean hot = over(b, mx, my);
+            box(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), hot ? 0xFF1E1A2E : PANEL, hot ? PURPLE : BORDER);
+            int ax = b.getX() + 8, ay = b.getY() + b.getHeight() / 2;
+            for (int i = 0; i < 4; i++) {   // little left arrow
+                g.fill(ax + i, ay - i, ax + i + 1, ay - i + 1, hot ? TEXT : MUTED);
+                g.fill(ax + i, ay + i, ax + i + 1, ay + i + 1, hot ? TEXT : MUTED);
+            }
+            text(g, "All players", ax + 9, b.getY() + (b.getHeight() - 7) / 2, hot ? TEXT : MUTED, 0.8f, false);
+        }
+
+        // header: face, name, first / last bet
+        int hx = fx + 10, hy = contentY() + 30;
+        face(g, name, hx, hy, 26);
+        text(g, name, hx + 34, hy + 2, TEXT, 1.4f, true);
+        String sub = pays.isEmpty() ? "No dated payments yet"
+                : "first bet " + day(oldest.get(0).ts) + "   -   last bet " + ago(pays.get(0).ts);
+        text(g, sub, hx + 34, hy + 18, DIM, 0.72f, false);
+
+        // stat boxes
+        long theirNet = all == null ? 0 : all.net();
+        long paidYou = all == null ? 0 : all.paidYou, youPaid = all == null ? 0 : all.youPaid;
+        int bets = all == null ? pays.size() : all.payments;
+        long biggest = 0;
+        for (PaymentLedger.Payment p : pays) biggest = Math.max(biggest, p.youPaid);
+        int cy = hy + 34, gap = 8, cw = (fw - 20 - gap * 4) / 5;
+        int[] cols = {fx + 10, 0, 0, 0, 0};
+        for (int i = 1; i < 5; i++) cols[i] = cols[i - 1] + cw + gap;
+        statBox(g, cols[0], cy, cw, "THEIR NET", signedMoney(theirNet), theirNet > 0 ? GREEN : theirNet < 0 ? RED : TEXT,
+                theirNet > 0 ? "up on you" : theirNet < 0 ? "down to you" : "even");
+        statBox(g, cols[1], cy, cw, "PAID YOU", Money.format(paidYou), TEXT, "their bets");
+        statBox(g, cols[2], cy, cw, "YOU PAID", Money.format(youPaid), TEXT, "their wins");
+        statBox(g, cols[3], cy, cw, "BETS", String.valueOf(bets), TEXT, "payments");
+        statBox(g, cols[4], cy, cw, "BIGGEST WIN", Money.format(biggest), biggest > 0 ? GREEN : TEXT, "one payout");
+
+        // chart (left) + history (right)
+        int py = cy + 50, ph = contentBottom() - py;
+        int lw = (fw - 28) * 58 / 100, rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx;
+        box(g, fx + 10, py, lw, ph, PANEL, BORDER);
+        caps(g, "THEIR NET OVER TIME", fx + 20, py + 10, TEXT);
+        long[] series = new long[oldest.size() + 1];
+        long run = 0;
+        for (int i = 0; i < oldest.size(); i++) {
+            run += oldest.get(i).youPaid - oldest.get(i).paidYou;   // their side
+            series[i + 1] = run;
+        }
+        String now = signedMoney(run);
+        text(g, now, fx + 10 + lw - 12 - wb(now, 1.1f), py + 8, run > 0 ? GREEN : run < 0 ? RED : MUTED, 1.1f, true);
+        chart(g, series, fx + 20, py + 28, lw - 30, ph - 38);
+
+        box(g, rx, py, rw, ph, PANEL, BORDER);
+        caps(g, "PAYMENTS", rx + 10, py + 10, TEXT);
+        if (!pays.isEmpty()) text(g, String.valueOf(pays.size()), rx + 16 + capsW("PAYMENTS"), py + 10, DIM, 0.72f, false);
+        int rowH = 18, ry = py + 28, rows = Math.max(0, (py + ph - 6 - ry) / rowH);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, pays.size() - rows)));
+        for (int i = 0; i < rows && scroll + i < pays.size(); i++) {
+            PaymentLedger.Payment p = pays.get(scroll + i);
+            boolean in = p.paidYou > 0;
+            int ty = ry + i * rowH;
+            if (i % 2 == 0) g.fill(rx + 6, ty - 3, rx + rw - 6, ty + rowH - 3, 0xFF15121F);
+            text(g, day(p.ts) + "  " + clock(p.ts), rx + 12, ty + 2, DIM, 0.74f, false);
+            text(g, in ? "bet" : "won", rx + rw * 52 / 100, ty + 2, MUTED, 0.74f, false);
+            String amt = in ? "+" + Money.format(p.paidYou) : "-" + Money.format(p.youPaid);
+            text(g, amt, rx + rw - 12 - wb(amt, 0.8f), ty + 1, in ? GREEN : RED, 0.8f, true);
+        }
+        if (pays.isEmpty()) text(g, "No dated payments with " + name + " yet", rx + 12, ry + 2, DIM, 0.8f, false);
+        scrollbar(g, rx + rw - 4, ry - 3, py + ph - 6 - ry, rows, pays.size());
+    }
+
+    private void statBox(GuiGraphicsExtractor g, int x, int y, int bw, String label, String value, int valueColor, String sub) {
+        box(g, x, y, bw, 42, PANEL, BORDER);
+        caps(g, label, x + 10, y + 8, MUTED);
+        text(g, value, x + 10, y + 19, valueColor, 1.15f, true);
+        text(g, sub, x + 10, y + 32, DIM, 0.66f, false);
+    }
+
     private void onSession() {
         if (!PaymentLedger.isSessionActive()) {
             PaymentLedger.startSession();
@@ -248,7 +431,7 @@ public class OverviewScreen extends Screen {
 
     private int welcomeY() { return contentY(); }
     private int cardsY() { return welcomeY() + 48; }
-    private int cardsH() { return 64; }
+    private int cardsH() { return 74; }
     private int[] feedBox() {
         int y = cardsY() + cardsH() + 8, h = contentBottom() - y;
         int bw = (fw - 30) * 36 / 100;
@@ -271,16 +454,19 @@ public class OverviewScreen extends Screen {
 
     private static int alpha(int col, int a) { return (a << 24) | (col & 0xFFFFFF); }
 
+    private static final boolean GLOWS = false;   // flat look: cleaner and lighter to draw
+
     private void glow(GuiGraphicsExtractor g, int cx, int cy, int rx, int ry, int color, int strength) {
-        int steps = 28;
+        if (!GLOWS) return;
+        int steps = 10;   // light: 10 soft layers (looks the same, far less to draw)
         int per = Math.max(1, Math.round(strength / (float) steps));
         for (int i = steps; i >= 1; i--) {
             float t = i / (float) steps;
             int gw = Math.round(rx * t), gh = Math.round(ry * t);
-            int cw = Math.round(gw * 0.71f), ch = Math.round(gh * 0.71f);
+            int cw = Math.round(gw * 0.71f);
             g.fill(cx - cw, cy - gh, cx + cw, cy + gh, alpha(color, per));
-            g.fill(cx - gw, cy - ch, cx - cw, cy + ch, alpha(color, per));
-            g.fill(cx + cw, cy - ch, cx + gw, cy + ch, alpha(color, per));
+            g.fill(cx - gw, cy - Math.round(gh * 0.71f), cx - cw, cy + Math.round(gh * 0.71f), alpha(color, per));
+            g.fill(cx + cw, cy - Math.round(gh * 0.71f), cx + gw, cy + Math.round(gh * 0.71f), alpha(color, per));
         }
     }
 
@@ -306,14 +492,14 @@ public class OverviewScreen extends Screen {
         for (long v : vals) { min = Math.min(min, v); max = Math.max(max, v); }
         if (max == min) { max++; min--; }
         int last = -1;
-        for (int px = 0; px < sw; px++) {
+        for (int px = 0; px < sw; px += 2) {
             double t = (double) px * (vals.length - 1) / Math.max(1, sw - 1);
             int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
             double v = vals[i0] + (vals[i1] - vals[i0]) * (t - i0);
             int yy = y + (int) Math.round((max - v) / (double) (max - min) * (sh - 2)) + 1;
-            g.fill(x + px, yy, x + px + 1, y + sh, alpha(color, 34));
+            g.fill(x + px, yy, x + px + 2, y + sh, alpha(color, 34));
             int from = last < 0 ? yy : last;
-            g.fill(x + px, Math.min(yy, from), x + px + 1, Math.max(yy, from) + 1, color);
+            g.fill(x + px, Math.min(yy, from), x + px + 2, Math.max(yy, from) + 1, color);
             last = yy;
         }
     }
@@ -354,8 +540,8 @@ public class OverviewScreen extends Screen {
         g.fill(x + 1, y, x + size - 1, y + size, PURPLE);
         g.fill(x, y + 1, x + size, y + size - 1, PURPLE);
         String l = name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase(Locale.US);
-        float sc = size / 14f;
-        text(g, l, x + (size - wb(l, sc)) / 2, y + (int) (size * 0.22f), TEXT, sc, true);
+        float sc = size / 12f;
+        text(g, l, x + (size - wb(l, sc)) / 2, y + Math.round((size - 7 * sc) / 2f), TEXT, sc, true);
     }
 
     /** Payments in the current range, oldest first. */
@@ -397,7 +583,7 @@ public class OverviewScreen extends Screen {
         drawHeader(g, mouseX, mouseY);
         switch (tab) {
             case 0 -> drawOverview(g, mouseX, mouseY);
-            case 1 -> drawWinLoss(g);
+            case 1 -> { if (wlPlayer != null) drawPlayerPage(g, mouseX, mouseY); else drawWinLoss(g, mouseX, mouseY); }
             case 2 -> drawRakeback(g);
             case 3 -> drawSessions(g, mouseX, mouseY);
             case 4 -> drawAuctions(g, mouseX, mouseY);
@@ -459,11 +645,12 @@ public class OverviewScreen extends Screen {
             boolean confirming = confirmUntil > System.currentTimeMillis();
             Button b = sessionButton;
             int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
-            int col = confirming ? RED : active ? GREEN : DIM;
-            box(g, x, y, bw, bh, alpha(col, over(b, mouseX, mouseY) ? 50 : 26), col);
+            int col = confirming ? RED : active ? GREEN : MUTED;
+            box(g, x, y, bw, bh, PANEL, col);
+            if (over(b, mouseX, mouseY)) g.fill(x + 1, y + 1, x + bw - 1, y + bh - 1, alpha(col, 28));
             String s = confirming ? "CLICK AGAIN TO END" : active
                     ? "SESSION LIVE  " + hms(PaymentLedger.sessionMillis()) : "START SESSION";
-            text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + 3, col == DIM ? MUTED : col, 0.76f, true);
+            text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + (bh - 7) / 2, col, 0.76f, true);
         }
 
         List<PaymentLedger.Payment> pays = rangePayments();
@@ -484,7 +671,7 @@ public class OverviewScreen extends Screen {
         long bv = PaymentLedger.balance();
         boolean balDown = balVals.length > 1 && balVals[balVals.length - 1] < balVals[0];
         String balSub = bv < 0 ? "type /bal to load"
-                : balVals.length > 1 ? (balDown ? "v " : "^ ") + signedMoney(balVals[balVals.length - 1] - balVals[0]) + " " + rangeWord()
+                : balVals.length > 1 ? (balDown ? "\u2193 " : "\u2191 ") + signedMoney(balVals[balVals.length - 1] - balVals[0]) + " " + rangeWord()
                 : "updated from /bal";
         card(g, c1, cy, cw, ch, "BALANCE", bv < 0 ? "$---" : Money.format(bv), balSub, GOLD, TEXT, balDown ? RED : GREEN, balVals);
 
@@ -548,12 +735,11 @@ public class OverviewScreen extends Screen {
     private void card(GuiGraphicsExtractor g, int x, int y, int cw, int ch, String label, String value, String sub,
                       int lineColor, int valueColor, int subColor, long[] series) {
         box(g, x, y, cw, ch, PANEL, BORDER);
-        glow(g, x + cw * 3 / 4, y + ch / 3, cw / 3, ch / 2, lineColor, 36);
         g.fill(x, y, x + cw, y + 1, lineColor);
-        caps(g, label, x + 8, y + 7, MUTED);
-        text(g, value, x + 8, y + 17, valueColor, 1.6f, true);
-        text(g, sub, x + 8, y + 32, subColor, 0.72f, false);
-        spark(g, series, x + 6, y + ch - 22, cw - 12, 18, lineColor);
+        caps(g, label, x + 10, y + 9, MUTED);
+        text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
+        text(g, sub, x + 10, y + 37, subColor, 0.72f, false);
+        spark(g, series, x + 8, y + ch - 22, cw - 16, 16, lineColor);
     }
 
     private void chart(GuiGraphicsExtractor g, long[] vals, int x, int y, int cw, int ch) {
@@ -570,15 +756,15 @@ public class OverviewScreen extends Screen {
         text(g, signedMoney(max), x, y - 1, DIM, 0.72f, false);
         text(g, signedMoney(min), x, y + ch - 6, DIM, 0.72f, false);
         int last = -1, lastX = x;
-        for (int px = 0; px < cw; px++) {
+        for (int px = 0; px < cw; px += 2) {
             double t = (double) px * (vals.length - 1) / Math.max(1, cw - 1);
             int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
             double v = vals[i0] + (vals[i1] - vals[i0]) * (t - i0);
             int yy = y + (int) Math.round((hi - v) / (double) (hi - lo) * (ch - 1));
             int col = v >= 0 ? GREEN : RED;
-            g.fill(x + px, Math.min(yy, zy), x + px + 1, Math.max(yy, zy), alpha(col, 44));
+            g.fill(x + px, Math.min(yy, zy), x + px + 2, Math.max(yy, zy), alpha(col, 44));
             int from = last < 0 ? yy : last;
-            g.fill(x + px, Math.min(yy, from), x + px + 1, Math.max(yy, from) + 1, col);
+            g.fill(x + px, Math.min(yy, from), x + px + 2, Math.max(yy, from) + 1, col);
             last = yy;
             lastX = x + px;
         }
@@ -591,9 +777,9 @@ public class OverviewScreen extends Screen {
     private static final int PINK = 0xFFF472B6;
 
     private int pageTitle(GuiGraphicsExtractor g, String title, String sub) {
-        int x = fx + 10, y = contentY();
+        int x = fx + 10, y = contentY() + 4;
         text(g, title, x, y, TEXT, 1.4f, true);
-        text(g, sub, x, y + 15, MUTED, 0.72f, false);
+        text(g, sub, x, y + 14, MUTED, 0.72f, false);
         return y + 26;
     }
 
@@ -651,12 +837,8 @@ public class OverviewScreen extends Screen {
     }
 
     // ================= WIN / LOSS =================
-    private void drawWinLoss(GuiGraphicsExtractor g) {
-        List<PaymentLedger.Entry> all = new ArrayList<>();   // everyone, all time
-        String q = search.trim().toLowerCase(Locale.US);
-        for (PaymentLedger.Entry e : PaymentLedger.entries(false))
-            if (q.isEmpty() || e.name.toLowerCase(Locale.US).contains(q)) all.add(e);
-        all.sort(Comparator.comparingLong(PaymentLedger.Entry::net).reversed());   // won most off you first
+    private void drawWinLoss(GuiGraphicsExtractor g, int mx, int my) {
+        List<PaymentLedger.Entry> all = winLossList();   // everyone, all time, won most off you first
         int up = 0, down = 0;
         long upSum = 0, downSum = 0;
         for (PaymentLedger.Entry e : all) {
@@ -689,10 +871,13 @@ public class OverviewScreen extends Screen {
             int idx = scroll + i;
             PaymentLedger.Entry e = all.get(idx);
             int ty = ry + i * rowH;
-            if (i % 2 == 0) g.fill(px + 4, ty - 3, px + pw - 8, ty + rowH - 3, 0xFF161323);
+            boolean hot = mx >= px + 4 && mx < px + pw - 8 && my >= ty - 3 && my < ty + rowH - 3;
+            if (hot) g.fill(px + 4, ty - 3, px + pw - 8, ty + rowH - 3, 0xFF221D36);
+            else if (i % 2 == 0) g.fill(px + 4, ty - 3, px + pw - 8, ty + rowH - 3, 0xFF161323);
+            if (hot) g.fill(px + 4, ty - 3, px + 6, ty + rowH - 3, PURPLE);
             text(g, String.valueOf(idx + 1), cNum, ty + 1, DIM, 0.76f, false);
             face(g, e.name, cName, ty - 1, 10);
-            text(g, e.name, cName + 14, ty, TEXT, 0.8f, true);
+            text(g, e.name, cName + 14, ty, hot ? PURPLE_LIGHT : TEXT, 0.8f, true);
             text(g, String.valueOf(e.payments), cBets, ty + 1, MUTED, 0.75f, false);
             text(g, Money.format(e.paidYou), cWag, ty + 1, MUTED, 0.75f, false);
             long n = e.net();
@@ -700,6 +885,7 @@ public class OverviewScreen extends Screen {
             text(g, v, cNet - wb(v, 0.8f), ty, n > 0 ? GREEN : n < 0 ? RED : MUTED, 0.8f, true);
         }
         if (all.isEmpty()) text(g, "No players yet", cName, ry, DIM, 0.85f, false);
+        else text(g, "click a player to see their history", cName + 14 + capsW("PLAYER") + 10, hy, DIM, 0.66f, false);
         scrollbar(g, px + pw - 5, ry - 3, py + ph - ry, visible, all.size());
     }
 
@@ -760,56 +946,91 @@ public class OverviewScreen extends Screen {
         int pays = 0;
         for (PaymentLedger.Entry e : PaymentLedger.entries(true)) { in += e.paidYou; out += e.youPaid; pays += e.payments; }
         long profit = in - out;
+        if (pendingDel != -2 && System.currentTimeMillis() > pendingUntil) pendingDel = -2;
 
-        int y = contentY(), ch = 54, x = fx + 10, cw = fw - 20;
+        // ---- current session card ----
+        int y = contentY(), ch = S_CARD_H, x = fx + 10, cw = fw - 20;
         box(g, x, y, cw, ch, PANEL, BORDER);
-        glow(g, x + cw / 5, y + ch / 2, cw / 5, ch / 2, active ? GREEN : PURPLE, 34);
-        g.fill(x, y, x + cw, y + 1, active ? GREEN : DIM);
-        caps(g, active ? "SESSION LIVE" : "NO SESSION RUNNING", x + 8, y + 7, active ? GREEN : MUTED);
-        text(g, hms(PaymentLedger.sessionMillis()), x + 8, y + 18, TEXT, 1.6f, true);
-        text(g, active ? "started " + dayTime(PaymentLedger.sessionStartTime()) : "last session", x + 8, y + 37, MUTED, 0.72f, false);
-        int sx = x + cw / 3;
-        stat(g, "RECEIVED", Money.format(in), sx, y + 10, TEXT);
-        stat(g, "SENT", Money.format(out), sx + 70, y + 10, TEXT);
-        stat(g, "PROFIT", signedMoney(profit), sx + 140, y + 10, profit >= 0 ? GREEN : RED);
-        stat(g, "PAYMENTS", String.valueOf(pays), sx + 210, y + 10, TEXT);
+        g.fill(x, y, x + cw, y + 1, active ? GREEN : BORDER);
+        caps(g, active ? "SESSION LIVE" : "NO SESSION RUNNING", x + 12, y + 10, active ? GREEN : MUTED);
+        text(g, hms(PaymentLedger.sessionMillis()), x + 12, y + 23, TEXT, 1.4f, true);
+        text(g, active ? "started " + dayTime(PaymentLedger.sessionStartTime()) : "last session", x + 12, y + 42, DIM, 0.72f, false);
+        int sx = x + cw * 30 / 100, step = Math.max(64, cw * 13 / 100);
+        stat(g, "RECEIVED", Money.format(in), sx, y + 14, TEXT);
+        stat(g, "SENT", Money.format(out), sx + step, y + 14, TEXT);
+        stat(g, "PROFIT", signedMoney(profit), sx + step * 2, y + 14, profit >= 0 ? GREEN : RED);
+        stat(g, "PAYMENTS", String.valueOf(pays), sx + step * 3, y + 14, TEXT);
 
         if (sessionButton != null) {
             boolean confirming = confirmUntil > System.currentTimeMillis();
             Button b = sessionButton;
             int bx = b.getX(), by = b.getY(), bw = b.getWidth(), bh = b.getHeight();
-            int col = confirming ? RED : active ? RED : GREEN;
-            box(g, bx, by, bw, bh, alpha(col, over(b, mouseX, mouseY) ? 60 : 30), col);
+            int col = confirming || active ? RED : GREEN;
+            box(g, bx, by, bw, bh, PANEL, col);
+            if (over(b, mouseX, mouseY)) g.fill(bx + 1, by + 1, bx + bw - 1, by + bh - 1, alpha(col, 30));
             String s = confirming ? "CONFIRM?" : active ? "END SESSION" : "START SESSION";
-            text(g, s, bx + (bw - wb(s, 0.85f)) / 2, by + 4, col, 0.85f, true);
+            text(g, s, bx + (bw - wb(s, 0.8f)) / 2, by + (bh - 7) / 2, col, 0.8f, true);
         }
 
-        // past sessions
-        int py = y + ch + 8, ph = contentBottom() - py;
+        // ---- past sessions ----
+        int py = sPanelY(), ph = contentBottom() - py;
         box(g, x, py, cw, ph, PANEL, BORDER);
-        caps(g, "PAST SESSIONS", x + 8, py + 9, TEXT);
+        caps(g, "PAST SESSIONS", x + 12, py + 11, TEXT);
         List<PaymentLedger.SessionRecord> hist = PaymentLedger.history();
-        int c1 = x + 8, c2 = x + cw * 26 / 100, c3 = x + cw * 42 / 100, c4 = x + cw * 58 / 100, c5 = x + cw * 74 / 100, cr = x + cw - 8;
-        int hy = py + 24;
+        if (!hist.isEmpty()) text(g, hist.size() + (hist.size() == 1 ? " session" : " sessions"), x + 18 + capsW("PAST SESSIONS"), py + 11, DIM, 0.72f, false);
+        if (clearSessionsBtn != null) {
+            Button b = clearSessionsBtn;
+            boolean armed = pendingDel == -1;
+            boolean hot = over(b, mouseX, mouseY);
+            box(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), armed ? alpha(RED, 70) : hot ? 0xFF1E1A2E : PANEL, armed || hot ? RED : BORDER);
+            String s = armed ? "Sure?" : "Clear all";
+            text(g, s, b.getX() + (b.getWidth() - w(s, 0.76f)) / 2, b.getY() + (b.getHeight() - 7) / 2, armed || hot ? RED : MUTED, 0.76f, false);
+        }
+
+        int c1 = x + 12, c2 = x + cw * 26 / 100, c3 = x + cw * 42 / 100, c4 = x + cw * 57 / 100, c5 = x + cw * 71 / 100, cr = x + cw - 38;
+        int hy = py + 28;
         text(g, "STARTED", c1, hy, DIM, 0.72f, true);
         text(g, "LENGTH", c2, hy, DIM, 0.72f, true);
         text(g, "RECEIVED", c3, hy, DIM, 0.72f, true);
         text(g, "SENT", c4, hy, DIM, 0.72f, true);
         text(g, "PAYMENTS", c5, hy, DIM, 0.72f, true);
         text(g, "PROFIT", cr - wb("PROFIT", 0.72f), hy, DIM, 0.72f, true);
-        int rowH = 14, ry = hy + 12, rows = Math.max(0, (py + ph - 4 - ry) / rowH);
-        for (int i = 0; i < Math.min(rows, hist.size()); i++) {
-            PaymentLedger.SessionRecord r = hist.get(i);
-            int ty = ry + i * rowH;
-            if (i % 2 == 0) g.fill(x + 4, ty - 2, x + cw - 4, ty + rowH - 2, 0xFF161323);
-            text(g, dayTime(r.start), c1, ty, TEXT, 0.75f, false);
-            text(g, hms(r.length()), c2, ty, TEXT, 0.75f, false);
-            text(g, Money.format(r.received), c3, ty, TEXT, 0.75f, false);
-            text(g, Money.format(r.sent), c4, ty, TEXT, 0.75f, false);
-            text(g, r.payments > 0 ? String.valueOf(r.payments) : "-", c5, ty, TEXT, 0.75f, false);
+        g.fill(x + 6, hy + 10, x + cw - 6, hy + 11, BORDER);
+
+        int ry = sRowsY(), visible = sVisible();
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, hist.size() - visible)));
+        for (int i = 0; i < visible && scroll + i < hist.size(); i++) {
+            int idx = scroll + i;
+            PaymentLedger.SessionRecord r = hist.get(idx);
+            int ty = ry + i * S_ROW_H;
+            if (i % 2 == 0) g.fill(x + 6, ty - 3, x + cw - 6, ty + S_ROW_H - 3, 0xFF15121F);
+            int tty = ty + (S_ROW_H - 7) / 2 - 3;
+            text(g, dayTime(r.start), c1, tty, TEXT, 0.8f, false);
+            text(g, hms(r.length()), c2, tty, MUTED, 0.8f, false);
+            text(g, Money.format(r.received), c3, tty, MUTED, 0.8f, false);
+            text(g, Money.format(r.sent), c4, tty, MUTED, 0.8f, false);
+            text(g, r.payments > 0 ? String.valueOf(r.payments) : "-", c5, tty, MUTED, 0.8f, false);
             String p = signedMoney(r.profit());
-            text(g, p, cr - wb(p, 0.75f), ty, r.profit() >= 0 ? GREEN : RED, 0.75f, true);
+            text(g, p, cr - wb(p, 0.8f), tty, r.profit() > 0 ? GREEN : r.profit() < 0 ? RED : MUTED, 0.8f, true);
         }
+        for (var e : sessionDelButtons.entrySet()) {   // the x / Sure? on each row
+            Button b = e.getKey();
+            boolean armed = pendingDel == e.getValue(), hot = over(b, mouseX, mouseY);
+            int bx = b.getX(), by = b.getY();
+            if (armed) {
+                String s = "Sure?";
+                int bw = wb(s, 0.7f) + 8;
+                box(g, bx + 16 - bw, by, bw, b.getHeight(), alpha(RED, 80), RED);
+                text(g, s, bx + 16 - bw + 4, by + (b.getHeight() - 7) / 2, TEXT, 0.7f, true);
+            } else {
+                int c = hot ? RED : DIM, mx0 = bx + 5, my0 = by + 5;
+                for (int k = 0; k < 6; k++) {   // little x
+                    g.fill(mx0 + k, my0 + k, mx0 + k + 1, my0 + k + 1, c);
+                    g.fill(mx0 + 5 - k, my0 + k, mx0 + 6 - k, my0 + k + 1, c);
+                }
+            }
+        }
+        scrollbar(g, x + cw - 4, ry - 3, py + ph - 6 - ry, visible, hist.size());
         if (hist.isEmpty()) text(g, "Ended sessions show up here", c1, ry, DIM, 0.85f, false);
     }
 
@@ -840,17 +1061,23 @@ public class OverviewScreen extends Screen {
         }
     }
 
+    private static String cachedQuery = null;
+    private static List<Integer> cachedItems = null;
+
     private List<Integer> filteredItems() {
         loadItems();
+        if (itemQuery.equals(cachedQuery) && cachedItems != null) return cachedItems;
         String q = itemQuery.trim().toLowerCase(Locale.US);
         List<Integer> out = new ArrayList<>();
         for (int i = 0; i < allItems.size(); i++)
             if (q.isEmpty() || allNames.get(i).toLowerCase(Locale.US).contains(q)) out.add(i);
+        cachedQuery = itemQuery;
+        cachedItems = out;
         return out;
     }
 
     // layout shared by buttons and drawing
-    private int aTop() { return contentY() + 26; }
+    private int aTop() { return contentY() + 30; }
     private int aLeftW() { return (fw - 28) * 49 / 100; }
     private int aRingH() { return Math.max(96, Math.min(150, (contentBottom() - aTop()) * 42 / 100)); }
     private int aCtrlY() { return aTop() + aRingH() + 6; }
@@ -923,13 +1150,22 @@ public class OverviewScreen extends Screen {
         int ro = r, ri = r - thick;
         int ro2 = ro * ro, ri2 = ri * ri;
         for (int dy = -ro; dy <= ro; dy++) {
-            for (int dx = -ro; dx <= ro; dx++) {
-                int d2 = dx * dx + dy * dy;
-                if (d2 > ro2 || d2 < ri2) continue;
-                double ang = Math.toDegrees(Math.atan2(dx, -dy));   // 0 at the top, clockwise
-                if (ang < 0) ang += 360;
-                int col = (litColor != 0 && ang < frac * 360) ? litColor : restColor;
-                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, col);
+            int runStart = Integer.MIN_VALUE, runColor = 0;
+            for (int dx = -ro; dx <= ro + 1; dx++) {
+                int col = 0;
+                if (dx <= ro) {
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 <= ro2 && d2 >= ri2) {
+                        double ang = Math.toDegrees(Math.atan2(dx, -dy));   // 0 at the top, clockwise
+                        if (ang < 0) ang += 360;
+                        col = (litColor != 0 && ang < frac * 360) ? litColor : restColor;
+                    }
+                }
+                if (col != runColor) {   // close the previous run
+                    if (runColor != 0) g.fill(cx + runStart, cy + dy, cx + dx, cy + dy + 1, runColor);
+                    runStart = dx;
+                    runColor = col;
+                }
             }
         }
     }
@@ -1094,7 +1330,7 @@ public class OverviewScreen extends Screen {
     }
 
     private void stat(GuiGraphicsExtractor g, String label, String value, int x, int y, int color) {
-        caps(g, label, x, y, DIM);
-        text(g, value, x, y + 12, color, 1.1f, true);
+        caps(g, label, x, y, MUTED);
+        text(g, value, x, y + 13, color, 1.15f, true);
     }
 }

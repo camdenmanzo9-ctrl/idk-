@@ -378,12 +378,12 @@ public class SettingsScreen extends Screen {
         int a = Math.max(0, Math.min(255, st.bgOpacity * 255 / 100));
         int top = bright(st.bgTop), bot = bright(st.bgGradient ? st.bgBottom : st.bgTop);
         // a near-black theme still needs to read as a panel: keep at least a charcoal floor
-        for (int yy = 0; yy < wh; yy += 2) {
+        for (int yy = 0; yy < wh; yy += 4) {
             float t = yy / (float) Math.max(1, wh);
             int r = (int) (((top >> 16) & 0xFF) + ((((bot >> 16) & 0xFF) - ((top >> 16) & 0xFF)) * t));
             int gg = (int) (((top >> 8) & 0xFF) + ((((bot >> 8) & 0xFF) - ((top >> 8) & 0xFF)) * t));
             int b = (int) ((top & 0xFF) + (((bot & 0xFF) - (top & 0xFF)) * t));
-            g.fill(wx, wy + yy, wx + ww, Math.min(wy + wh, wy + yy + 2), (a << 24) | (r << 16) | (gg << 8) | b);
+            g.fill(wx, wy + yy, wx + ww, Math.min(wy + wh, wy + yy + 4), (a << 24) | (r << 16) | (gg << 8) | b);
         }
     }
 
@@ -421,7 +421,7 @@ public class SettingsScreen extends Screen {
         g.text(font, "Snowy's Dashboard", 0, 0, T_TEXT, false);
         g.pose().popMatrix();
         double t0 = System.currentTimeMillis() / 4000.0;
-        for (int px = 0; px < ww; px++) g.fill(wx + px, wy + 26, wx + px + 1, wy + 28, rainbow(t0 + px / (double) ww));
+        for (int px = 0; px < ww; px += 3) g.fill(wx + px, wy + 26, wx + Math.min(ww, px + 3), wy + 28, rainbow(t0 + px / (double) ww));
         g.fill(wx + 122, wy + 28, wx + 123, wy + wh, 0xFF2C2C2C);
 
         // sidebar: every section has its own color

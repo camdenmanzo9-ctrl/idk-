@@ -338,16 +338,21 @@ public final class Alerts {
 
         // border (width from Popup style)
         int bwid = Math.max(1, Math.min(4, s.popupBorderW));
-        for (int px = 0; px < w; px++) {
-            int c = s.popupRainbow ? rainbow(t + px / (double) w) : argb(s.popupBorder, 255);
-            g.fill(x + px, y, x + px + 1, y + bwid, argb(c, a));
-            g.fill(x + px, y + h - bwid, x + px + 1, y + h, argb(c, a));
+        if (s.popupRainbow) {
+            for (int px = 0; px < w; px += 3) {
+                int c = rainbow(t + px / (double) w);
+                g.fill(x + px, y, x + Math.min(w, px + 3), y + bwid, argb(c, a));
+                g.fill(x + px, y + h - bwid, x + Math.min(w, px + 3), y + h, argb(c, a));
+            }
+        } else {
+            g.fill(x, y, x + w, y + bwid, argb(s.popupBorder, a));
+            g.fill(x, y + h - bwid, x + w, y + h, argb(s.popupBorder, a));
         }
-        for (int py = 0; py < h; py++) {
+        for (int py = 0; py < h; py += 3) {
             int c1 = s.popupRainbow ? rainbow(t + py / (double) h * 0.3) : argb(s.popupBorder, 255);
             int c2 = s.popupRainbow ? rainbow(t + 0.5 + py / (double) h * 0.3) : argb(s.popupBorder, 255);
-            g.fill(x, y + py, x + bwid, y + py + 1, argb(c1, a));
-            g.fill(x + w - bwid, y + py, x + w, y + py + 1, argb(c2, a));
+            g.fill(x, y + py, x + bwid, y + Math.min(h, py + 3), argb(c1, a));
+            g.fill(x + w - bwid, y + py, x + w, y + Math.min(h, py + 3), argb(c2, a));
         }
 
         if (s.popupShine) {
