@@ -51,6 +51,7 @@ public class OverviewScreen extends Screen {
     private int fx, fy, fw, fh, escX;
     private boolean showEsc = true;
     private float tabScale = 0.76f;
+    private int rangeGroupX, tabGroupX, tabGroupEnd;
 
     public OverviewScreen() {
         super(Component.literal("Snowy's Dashboard"));
@@ -128,7 +129,7 @@ public class OverviewScreen extends Screen {
     }
 
     private int contentY() { return fy + 30; }
-    private int contentBottom() { return fy + fh - 14; }
+    private int contentBottom() { return fy + fh - 22; }
 
     @Override
     protected void init() {
@@ -144,20 +145,21 @@ public class OverviewScreen extends Screen {
         panelButtons.clear();
         sessionButton = null;
 
-        // right: [24H 7D 30D ALL]
-        int bx = fx + fw - 10;
-        for (int i = RANGE_LABELS.length - 1; i >= 0; i--) {
-            final int r = i;
-            int bw = small(RANGE_LABELS[i]);
-            rangeButtons.add(0, btn(RANGE_LABELS[i], bx - bw, fy + 8, bw, () -> range = r));
-            bx -= bw + 3;
-        }
-        // SETTINGS button (opens the green settings screen), then "ESC close" to its left
-        int setW = small("SETTINGS");
-        headerSettings = btn("SETTINGS", bx - 4 - setW, fy + 8, setW, () -> {
+        // far right: gear (settings)
+        int gearX = fx + fw - 10 - 20;
+        headerSettings = btn("", gearX, fy + 8, 20, () -> {
             if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
         });
-        escX = bx - 4 - setW - 8;   // "ESC close" is drawn here
+        // ranges: one rounded bar [24H 7D 30D ALL]
+        int bx = gearX - 8 - 2;
+        for (int i = RANGE_LABELS.length - 1; i >= 0; i--) {
+            final int r = i;
+            int bw = wb(RANGE_LABELS[i], 0.74f) + 12;
+            rangeButtons.add(0, btn(RANGE_LABELS[i], bx - bw, fy + 8, bw, () -> range = r));
+            bx -= bw + 1;
+        }
+        rangeGroupX = bx - 1;
+        escX = rangeGroupX - 10;   // tabs end here
         settingsButton = null;
         searchBox = null;
         sessionDelButtons.clear();
@@ -167,37 +169,37 @@ public class OverviewScreen extends Screen {
         itemSearch = null;
         auctionButtons.clear();
 
-        // tabs: measured in bold (how they're drawn), shrunk if needed so nothing is ever cut off
-        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.65f) + 10 + capsW("DATA LIVE") + 20 + 10;
-        int rightStart = escX - w("ESC close", 0.62f) - 8;
-        showEsc = true;
-        float[] scales = {0.76f, 0.76f, 0.7f, 0.64f};
-        int[] pads = {12, 8, 8, 6};
-        int pad = 12, gap = 3;
+        // tabs: one rounded bar, measured in bold, shrunk if needed so nothing is ever cut off
+        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.74f) + 10 + capsW("DATA LIVE") + 20 + 12;
+        int rightEnd = escX;
+        float[] scales = {0.76f, 0.72f, 0.66f, 0.6f};
+        int[] pads = {14, 12, 10, 8};
+        int pad = 14;
         tabScale = 0.76f;
         for (int attempt = 0; attempt < scales.length; attempt++) {
-            if (attempt == 1) { showEsc = false; rightStart = headerSettings.getX() - 6; }
             tabScale = scales[attempt];
             pad = pads[attempt];
-            gap = attempt == 0 ? 3 : 2;
-            int tabsW = 0;
-            for (String t : TAB_LABELS) tabsW += wb(t, tabScale) + pad + gap;
-            if (tabsW <= rightStart - leftEnd) break;
+            int tw = 4;
+            for (String t : TAB_LABELS) tw += wb(t, tabScale) + pad + 1;
+            if (tw <= rightEnd - leftEnd) break;
         }
         int tabsW = 0;
-        for (String t : TAB_LABELS) tabsW += wb(t, tabScale) + pad + gap;
-        int tx = Math.max(leftEnd, leftEnd + (rightStart - leftEnd - tabsW) / 2);
+        for (String t : TAB_LABELS) tabsW += wb(t, tabScale) + pad + 1;
+        int tx = Math.max(leftEnd + 2, rightEnd - tabsW - 2);   // sits next to the range bar, like the design
+        tabGroupX = tx - 2;
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int t = i;
             int bw = wb(TAB_LABELS[i], tabScale) + pad;
             tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; wlPlayer = null; rebuildWidgets(); }));
-            tx += bw + gap;
+            tx += bw + 1;
         }
+        tabGroupEnd = tx + 1;
 
         if (tab == 0) {
             // session badge on the right of the welcome row
-            int bw = w("SESSION LIVE  0:00:00", 0.75f) + 20;
-            sessionButton = btn("", fx + fw - 10 - bw, welcomeY() + 14, bw, this::onSession);
+            int bw = wb("Click again to end", 0.8f) + 30;
+            sessionButton = btn("", fx + fw - 10 - bw, welcomeY() + 12, bw, this::onSession);
+            sessionButton.setHeight(20);
             // feed filter pills
             int[] feed = feedBox();
             int px = feed[0] + feed[2] - 8;
@@ -450,12 +452,25 @@ public class OverviewScreen extends Screen {
     }
 
     // ---------------- drawing helpers ----------------
+    /** Rounded box: border color first, then the fill inset by 1px. */
     private void box(GuiGraphicsExtractor g, int x, int y, int bw, int bh, int fill, int border) {
-        g.fill(x, y, x + bw, y + bh, fill);
-        g.fill(x, y, x + bw, y + 1, border);
-        g.fill(x, y + bh - 1, x + bw, y + bh, border);
-        g.fill(x, y, x + 1, y + bh, border);
-        g.fill(x + bw - 1, y, x + bw, y + bh, border);
+        int r = Math.max(1, Math.min(4, Math.min(bw, bh) / 5));
+        round(g, x, y, bw, bh, r, border);
+        round(g, x + 1, y + 1, bw - 2, bh - 2, Math.max(0, r - 1), fill);
+    }
+
+    /** Filled rectangle with rounded corners of radius r. */
+    static void round(GuiGraphicsExtractor g, int x, int y, int w, int h, int r, int color) {
+        if (w <= 0 || h <= 0) return;
+        r = Math.min(r, Math.min(w, h) / 2);
+        if (r <= 0) { g.fill(x, y, x + w, y + h, color); return; }
+        g.fill(x, y + r, x + w, y + h - r, color);
+        for (int i = 0; i < r; i++) {
+            double dy = r - i - 0.5;
+            int inset = (int) Math.round(r - Math.sqrt(Math.max(0, r * r - dy * dy)));
+            g.fill(x + inset, y + i, x + w - inset, y + i + 1, color);
+            g.fill(x + inset, y + h - 1 - i, x + w - inset, y + h - i, color);
+        }
     }
 
     private static int alpha(int col, int a) { return (a << 24) | (col & 0xFFFFFF); }
@@ -487,10 +502,10 @@ public class OverviewScreen extends Screen {
     private void pill(GuiGraphicsExtractor g, Button b, boolean on, int mx, int my, float sc) {
         int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
         boolean hover = over(b, mx, my);
-        if (on) g.fill(x, y, x + bw, y + bh, PURPLE);
-        else box(g, x, y, bw, bh, hover ? 0xFF1E1A2E : PANEL, BORDER);
+        if (on) round(g, x, y, bw, bh, 3, PURPLE);
+        else if (hover) round(g, x, y, bw, bh, 3, 0xFF221D36);
         String s = b.getMessage().getString();
-        text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? TEXT : MUTED, sc, true);
+        text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? TEXT : hover ? TEXT : MUTED, sc, true);
     }
 
     /** One bar per day, today on the right and brightest. */
@@ -506,6 +521,13 @@ public class OverviewScreen extends Screen {
             boolean today = i == n - 1;
             g.fill(x0, y + bh - h, Math.max(x0 + 1, x1), y + bh, today ? color : alpha(color, vals[i] <= 0 ? 50 : 130));
         }
+    }
+
+    /** Rounded bar drawn behind a row of pills. */
+    private void groupBar(GuiGraphicsExtractor g, List<Button> btns) {
+        if (btns.isEmpty()) return;
+        Button a = btns.get(0), z = btns.get(btns.size() - 1);
+        box(g, a.getX() - 2, a.getY() - 2, z.getX() + z.getWidth() - a.getX() + 4, a.getHeight() + 4, PANEL, BORDER);
     }
 
     private void spark(GuiGraphicsExtractor g, long[] vals, int x, int y, int sw, int sh, int color) {
@@ -595,7 +617,8 @@ public class OverviewScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         g.fill(0, 0, width, height, BG);
-        box(g, fx, fy, fw, fh, FRAME, BORDER);
+        round(g, fx, fy, fw, fh, 6, BORDER);
+        round(g, fx + 1, fy + 1, fw - 2, fh - 2, 5, FRAME);
     }
 
     private int lastMouseX, lastMouseY;
@@ -615,6 +638,7 @@ public class OverviewScreen extends Screen {
             case 4 -> drawAuctions(g, mouseX, mouseY);
             default -> drawPanels(g, mouseX, mouseY);
         }
+        g.fill(fx + 1, fy + fh - 16, fx + fw - 1, fy + fh - 15, BORDER);
         String foot = "1-4 range   SPACE pause   TAB next page   ESC close";
         text(g, foot, fx + fw - 10 - w(foot, 0.74f), fy + fh - 10, DIM, 0.74f, false);
         text(g, "Display only - data from your own chat", fx + 10, fy + fh - 10, DIM, 0.74f, false);
@@ -639,11 +663,35 @@ public class OverviewScreen extends Screen {
         g.fill(x + 6, by0 + 6, x + 10, by0 + 10, paused ? AMBER : GREEN);
         caps(g, live, x + 14, by0 + 4, MUTED);
 
+        groupBar(g, tabButtons);
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my, tabScale);
-        for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
-        if (showEsc) text(g, "ESC close", escX - w("ESC close", 0.72f), fy + 11, DIM, 0.72f, false);
-        if (headerSettings != null) pill(g, headerSettings, false, mx, my);
+        groupBar(g, rangeButtons);
+        for (int i = 0; i < rangeButtons.size(); i++) {
+            Button b = rangeButtons.get(i);
+            boolean on = i == range;
+            if (on) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, 0xFF2A2440);
+            else if (over(b, mx, my)) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, 0xFF1E1A2E);
+            String s = b.getMessage().getString();
+            text(g, s, b.getX() + (b.getWidth() - wb(s, 0.74f)) / 2, b.getY() + (b.getHeight() - 7) / 2, on ? TEXT : MUTED, 0.74f, true);
+        }
+        if (headerSettings != null) gear(g, headerSettings, mx, my);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
+    }
+
+    /** Settings gear button. */
+    private void gear(GuiGraphicsExtractor g, Button b, int mx, int my) {
+        boolean hot = over(b, mx, my);
+        box(g, b.getX() - 2, b.getY() - 2, b.getWidth() + 4, b.getHeight() + 4, hot ? 0xFF1E1A2E : PANEL, hot ? PURPLE : BORDER);
+        int cx = b.getX() + b.getWidth() / 2, cy = b.getY() + b.getHeight() / 2, c = hot ? TEXT : MUTED;
+        for (int k = 0; k < 8; k++) {   // teeth
+            double a = k * Math.PI / 4;
+            int tx = cx + (int) Math.round(Math.cos(a) * 5), ty = cy + (int) Math.round(Math.sin(a) * 5);
+            g.fill(tx - 1, ty - 1, tx + 1, ty + 1, c);
+        }
+        for (int dy = -4; dy <= 4; dy++) for (int dx = -4; dx <= 4; dx++) {   // ring
+            int d2 = dx * dx + dy * dy;
+            if (d2 <= 16 && d2 >= 5) g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, c);
+        }
     }
 
     // ================= OVERVIEW =================
@@ -654,15 +702,15 @@ public class OverviewScreen extends Screen {
         if (minecraft != null && minecraft.player != null && Settings.S.skinFaces) {
             // Standing still and facing straight ahead: the "look at" point is the middle of its own box
             int bx1 = fx + 14, by1 = wy, bx2 = fx + 50, by2 = wy + 46;
-            glow(g, (bx1 + bx2) / 2, (by1 + by2) / 2, 26, 26, PURPLE, 34);
+            // your skin stands on its own, no tile behind it
             InventoryScreen.extractEntityInInventoryFollowsMouse(g, bx1, by1, bx2, by2, 20, 0.0625f,
                     (bx1 + bx2) / 2f, (by1 + by2) / 2f, preview());
         } else {
             face(g, me, fx + 16, wy + 4, 34);
         }
         int nx = fx + 60;
-        text(g, "Welcome, ", nx, wy + 9, TEXT, 1.6f, true);
-        text(g, me, nx + wb("Welcome, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f, true);
+        text(g, "Welcome back, ", nx, wy + 9, TEXT, 1.6f, true);
+        text(g, me, nx + wb("Welcome back, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f, true);
         text(g, "Have a great time on DonutSMP!", nx, wy + 27, MUTED, 0.75f, false);
 
         // session badge
@@ -671,12 +719,15 @@ public class OverviewScreen extends Screen {
             boolean confirming = confirmUntil > System.currentTimeMillis();
             Button b = sessionButton;
             int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
-            int col = confirming ? RED : active ? GREEN : MUTED;
-            box(g, x, y, bw, bh, PANEL, col);
-            if (over(b, mouseX, mouseY)) g.fill(x + 1, y + 1, x + bw - 1, y + bh - 1, alpha(col, 28));
-            String s = confirming ? "CLICK AGAIN TO END" : active
-                    ? "SESSION LIVE  " + hms(PaymentLedger.sessionMillis()) : "START SESSION";
-            text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + (bh - 7) / 2, col, 0.76f, true);
+            int col = confirming ? RED : GREEN;
+            int bg = confirming ? 0xFF2A0F16 : 0xFF0F1F16, bd = confirming ? 0xFF7A2E3A : 0xFF2E6B45;
+            box(g, x, y, bw, bh, over(b, mouseX, mouseY) ? (confirming ? 0xFF3A1520 : 0xFF143024) : bg, bd);
+            String s = confirming ? "Click again to end" : active ? "Live  " + hms(PaymentLedger.sessionMillis()) : "Start session";
+            int tw = wb(s, 0.8f) + 10;
+            int sx0 = x + (bw - tw) / 2;
+            boolean dotOn = !active || (System.currentTimeMillis() / 600) % 2 == 0;   // blinks while live
+            if (dotOn) round(g, sx0, y + bh / 2 - 2, 4, 4, 2, col);
+            text(g, s, sx0 + 10, y + (bh - 7) / 2, col, 0.8f, true);
         }
 
         List<PaymentLedger.Payment> pays = rangePayments();
@@ -717,6 +768,7 @@ public class OverviewScreen extends Screen {
         int[] fb = feedBox();
         box(g, fb[0], fb[1], fb[2], fb[3], PANEL, BORDER);
         caps(g, "PAYMENT FEED", fb[0] + 8, fb[1] + 9, TEXT);
+        groupBar(g, filterButtons);
         for (int i = 0; i < filterButtons.size(); i++) pill(g, filterButtons.get(i), i == filter, mouseX, mouseY);
         List<PaymentLedger.Payment> feed = new ArrayList<>();
         for (int i = pays.size() - 1; i >= 0; i--) {
@@ -746,12 +798,23 @@ public class OverviewScreen extends Screen {
         int[] cb = chartBox();
         box(g, cb[0], cb[1], cb[2], cb[3], PANEL, BORDER);
         glow(g, cb[0] + cb[2] * 3 / 4, cb[1] + cb[3] / 3, cb[2] / 4, cb[3] / 3, pc, 30);
-        int capW = caps(g, "PROFIT / LOSS", cb[0] + 8, cb[1] + 9, TEXT);
+        int capW = caps(g, "PROFIT / LOSS", cb[0] + 10, cb[1] + 10, TEXT);
         long spanDays = pays.isEmpty() ? 0 : Math.max(1, (now() - pays.get(0).ts + DAY - 1) / DAY);
-        text(g, spanDays + (spanDays == 1 ? " day of data" : " days of data"), cb[0] + 14 + capW, cb[1] + 9, DIM, 0.72f, false);
+        text(g, spanDays + (spanDays == 1 ? " day of data" : " days of data"), cb[0] + 18 + capW, cb[1] + 10, DIM, 0.72f, false);
         String big = signedMoney(net);
-        text(g, big, cb[0] + cb[2] - 8 - wb(big, 1.4f), cb[1] + 6, pc, 1.4f, true);
-        chart(g, netSeries, cb[0] + 8, cb[1] + 26, cb[2] - 16, cb[3] - 34);
+        text(g, big, cb[0] + cb[2] - 10 - wb(big, 1.4f), cb[1] + 8, pc, 1.4f, true);
+        long hiV = 0, loV = 0;
+        for (long v : netSeries) { hiV = Math.max(hiV, v); loV = Math.min(loV, v); }
+        int hx = cb[0] + 10, hy2 = cb[1] + 24;
+        text(g, "High", hx, hy2, DIM, 0.72f, false);
+        hx += w("High", 0.72f) + 4;
+        String hs = signedMoney(hiV);
+        text(g, hs, hx, hy2, GREEN, 0.72f, true);
+        hx += wb(hs, 0.72f) + 12;
+        text(g, "Low", hx, hy2, DIM, 0.72f, false);
+        hx += w("Low", 0.72f) + 4;
+        text(g, signedMoney(loV), hx, hy2, RED, 0.72f, true);
+        chart(g, netSeries, cb[0] + 10, cb[1] + 38, cb[2] - 20, cb[3] - 46);
     }
 
     private static String hms(long ms) {
@@ -762,8 +825,8 @@ public class OverviewScreen extends Screen {
     private void card(GuiGraphicsExtractor g, int x, int y, int cw, int ch, String label, String value, String sub,
                       int lineColor, int valueColor, int subColor, long[] series) {
         box(g, x, y, cw, ch, PANEL, BORDER);
-        g.fill(x, y, x + cw, y + 1, lineColor);
         caps(g, label, x + 10, y + 9, MUTED);
+        round(g, x + cw - 14, y + 10, 5, 5, 2, lineColor);
         text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
         text(g, sub, x + 10, y + 37, subColor, 0.72f, false);
         if (series != null) spark(g, series, x + 8, y + ch - 22, cw - 16, 16, lineColor);
@@ -779,9 +842,7 @@ public class OverviewScreen extends Screen {
         long pad = Math.max(1, (max - min) / 12);
         final long hi = max + pad, lo = min - pad;
         int zy = y + (int) Math.round((double) hi / (hi - lo) * (ch - 1));
-        g.fill(x, zy, x + cw, zy + 1, BORDER);
-        text(g, signedMoney(max), x, y - 1, DIM, 0.72f, false);
-        text(g, signedMoney(min), x, y + ch - 6, DIM, 0.72f, false);
+        for (int dx = 0; dx < cw; dx += 8) g.fill(x + dx, zy, x + Math.min(cw, dx + 4), zy + 1, 0xFF3A3358);
         int last = -1, lastX = x;
         for (int px = 0; px < cw; px += 2) {
             double t = (double) px * (vals.length - 1) / Math.max(1, cw - 1);
@@ -1262,6 +1323,7 @@ public class OverviewScreen extends Screen {
             text(g, c, b.getX() + (b.getWidth() - w(c, 0.8f)) / 2, b.getY() + (b.getHeight() - 7) / 2,
                     over(b, mx, my) ? TEXT : MUTED, 0.8f, false);
         }
+        groupBar(g, durationBtns);
         for (int i = 0; i < durationBtns.size(); i++) pill(g, durationBtns.get(i), DURATIONS[i] == Auction.durationMs, mx, my);
 
         caps(g, "TIMER COLOR", lx, aColorY() + 3, MUTED);
