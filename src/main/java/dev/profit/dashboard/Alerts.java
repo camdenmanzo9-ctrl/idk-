@@ -182,12 +182,12 @@ public final class Alerts {
         // spaced title
         String title = "AUCTION";
         int tw = 0;
-        for (char c : title.toCharArray()) tw += iw(f, String.valueOf(c), 0.7f, true) + 2;
+        for (char c : title.toCharArray()) tw += iw(f, String.valueOf(c), 0.76f, true) + 2;
         int tx = cx - tw / 2;
         for (char c : title.toCharArray()) {
             String ch = String.valueOf(c);
-            itext(g, f, ch, tx, y + 6, 0xFFE8E6F0, 0.7f, true);
-            tx += iw(f, ch, 0.7f, true) + 2;
+            itext(g, f, ch, tx, y + 6, 0xFFE8E6F0, 0.76f, true);
+            tx += iw(f, ch, 0.76f, true) + 2;
         }
 
         // ring: lit part = time left, in the chosen timer color
@@ -216,7 +216,7 @@ public final class Alerts {
         }
         if (name != null) {
             centered(g, f, name + " " + Money.format(amt), cx, y + 68, 0xFF4ADE80, 0.8f, true);
-            centered(g, f, Auction.running ? "is winning" : "won!", cx, y + 80, 0xFF9AA0AD, 0.65f, false);
+            centered(g, f, Auction.running ? "is winning" : "won!", cx, y + 80, 0xFF9AA0AD, 0.74f, false);
         } else {
             centered(g, f, Auction.running ? "No bids yet" : "No bids", cx, y + 72, 0xFF9AA0AD, 0.7f, false);
         }

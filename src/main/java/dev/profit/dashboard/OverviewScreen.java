@@ -42,6 +42,7 @@ public class OverviewScreen extends Screen {
     private final List<Button> filterButtons = new ArrayList<>();
     private Button settingsButton, sessionButton, headerSettings;
     private EditBox searchBox;
+    private Object pendingFocus;   // the search box to focus on the next frame
     private static String search = "";
     private final List<Button> panelButtons = new ArrayList<>();
     private long confirmUntil = 0;
@@ -85,15 +86,15 @@ public class OverviewScreen extends Screen {
         int cx = x;
         for (char ch : s.toCharArray()) {
             String t = String.valueOf(ch);
-            text(g, t, cx, y, color, 0.7f, true);
-            cx += wb(t, 0.7f) + 1;
+            text(g, t, cx, y, color, 0.76f, true);
+            cx += wb(t, 0.76f) + 1;
         }
         return cx - x;
     }
 
     private int capsW(String s) {
         int t = 0;
-        for (char ch : s.toCharArray()) t += wb(String.valueOf(ch), 0.7f) + 1;
+        for (char ch : s.toCharArray()) t += wb(String.valueOf(ch), 0.76f) + 1;
         return t;
     }
 
@@ -160,8 +161,8 @@ public class OverviewScreen extends Screen {
         auctionButtons.clear();
 
         // tabs: centered in the space between the left badge and the right-side buttons
-        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.65f) + 10 + capsW("DATA LIVE") + 16 + 10;
-        int rightStart = escX - w("ESC close", 0.62f) - 8;
+        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.74f) + 10 + capsW("DATA LIVE") + 16 + 10;
+        int rightStart = escX - w("ESC close", 0.72f) - 8;
         int gap = 3, pad = 12, tabsW = 0;
         for (String t : TAB_LABELS) tabsW += w(t, 0.75f) + pad + gap;
         if (tabsW > rightStart - leftEnd) {               // tight screen: slimmer tabs, drop the "ESC close" hint
@@ -196,13 +197,13 @@ public class OverviewScreen extends Screen {
             }
         } else if (tab == 1 || tab == 2) {
             int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 26;
-            searchBox = new EditBox(font, sbx + 18, sby + 8, sbw - 24, 12, Component.literal("Search"));
-            searchBox.setBordered(false);
+            searchBox = new EditBox(font, -4000, -4000, 200, 12, Component.literal("Search"));   // hidden: we draw it ourselves
             searchBox.setMaxLength(32);
             searchBox.setValue(search);
-            searchBox.setHint(Component.literal("Search players"));
             searchBox.setResponder(v -> { search = v; scroll = 0; });
-            addRenderableWidget(searchBox);
+            addWidget(searchBox);
+            Button click = btn("", sbx, sby, sbw, () -> pendingFocus = searchBox);
+            click.setHeight(26);
         } else if (tab == 4) {
             initAuctions();
         } else if (tab == 5) {
@@ -297,7 +298,7 @@ public class OverviewScreen extends Screen {
         if (on) g.fill(x, y, x + bw, y + bh, PURPLE);
         else box(g, x, y, bw, bh, hover ? 0xFF1E1A2E : PANEL, BORDER);
         String s = b.getMessage().getString();
-        text(g, s, x + (bw - wb(s, 0.7f)) / 2, y + 3, on ? TEXT : MUTED, 0.7f, true);
+        text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + 3, on ? TEXT : MUTED, 0.76f, true);
     }
 
     private void spark(GuiGraphicsExtractor g, long[] vals, int x, int y, int sw, int sh, int color) {
@@ -395,6 +396,7 @@ public class OverviewScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         lastMouseX = mouseX;
         lastMouseY = mouseY;
+        if (pendingFocus instanceof EditBox eb) { setFocused(eb); pendingFocus = null; }
         super.extractRenderState(g, mouseX, mouseY, delta);
         drawHeader(g, mouseX, mouseY);
         switch (tab) {
@@ -406,8 +408,8 @@ public class OverviewScreen extends Screen {
             default -> drawPanels(g, mouseX, mouseY);
         }
         String foot = "1-4 range   SPACE pause   TAB next page   ESC close";
-        text(g, foot, fx + fw - 10 - w(foot, 0.65f), fy + fh - 10, DIM, 0.65f, false);
-        text(g, "Display only - data from your own chat", fx + 10, fy + fh - 10, DIM, 0.65f, false);
+        text(g, foot, fx + fw - 10 - w(foot, 0.74f), fy + fh - 10, DIM, 0.74f, false);
+        text(g, "Display only - data from your own chat", fx + 10, fy + fh - 10, DIM, 0.74f, false);
     }
 
     private void drawHeader(GuiGraphicsExtractor g, int mx, int my) {
@@ -419,8 +421,8 @@ public class OverviewScreen extends Screen {
         g.fill(lx + 7, hy, lx + 8, hy + 8, PURPLE);
         g.fill(lx + 3, hy + 3, lx + 5, hy + 5, PURPLE_LIGHT);
         int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
-        text(g, "v1.0", x, hy + 2, DIM, 0.65f, false);
-        x += w("v1.0", 0.65f) + 10;
+        text(g, "v1.0", x, hy + 2, DIM, 0.74f, false);
+        x += w("v1.0", 0.74f) + 10;
         // DATA LIVE badge
         String live = paused ? "PAUSED" : "DATA LIVE";
         int bw = capsW(live) + 16;
@@ -430,7 +432,7 @@ public class OverviewScreen extends Screen {
 
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
-        if (showEsc) text(g, "ESC close", escX - w("ESC close", 0.62f), fy + 11, DIM, 0.62f, false);
+        if (showEsc) text(g, "ESC close", escX - w("ESC close", 0.72f), fy + 11, DIM, 0.72f, false);
         if (headerSettings != null) pill(g, headerSettings, false, mx, my);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
     }
@@ -464,7 +466,7 @@ public class OverviewScreen extends Screen {
             box(g, x, y, bw, bh, alpha(col, over(b, mouseX, mouseY) ? 50 : 26), col);
             String s = confirming ? "CLICK AGAIN TO END" : active
                     ? "SESSION LIVE  " + hms(PaymentLedger.sessionMillis()) : "START SESSION";
-            text(g, s, x + (bw - wb(s, 0.7f)) / 2, y + 3, col == DIM ? MUTED : col, 0.7f, true);
+            text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + 3, col == DIM ? MUTED : col, 0.76f, true);
         }
 
         List<PaymentLedger.Payment> pays = rangePayments();
@@ -519,11 +521,11 @@ public class OverviewScreen extends Screen {
             boolean in = p.paidYou > 0;
             int y = ry + i * rowH;
             if (i % 2 == 0) g.fill(fb[0] + 4, y - 2, fb[0] + fb[2] - 4, y + rowH - 3, 0xFF161323);
-            text(g, clock(p.ts), fb[0] + 8, y + 3, DIM, 0.7f, false);
-            int ix = fb[0] + 8 + w("00:00 pm", 0.7f) + 6;
+            text(g, clock(p.ts), fb[0] + 8, y + 3, DIM, 0.76f, false);
+            int ix = fb[0] + 8 + w("00:00 pm", 0.76f) + 6;
             face(g, p.name, ix, y, 11);
             text(g, p.name, ix + 15, y - 1, TEXT, 0.85f, true);
-            text(g, in ? "paid you" : "you paid", ix + 15, y + 7, DIM, 0.62f, false);
+            text(g, in ? "paid you" : "you paid", ix + 15, y + 7, DIM, 0.72f, false);
             String amt = signedMoney(in ? p.paidYou : -p.youPaid);
             text(g, amt, fb[0] + fb[2] - 8 - wb(amt, 0.85f), y + 2, in ? GREEN : RED, 0.85f, true);
         }
@@ -535,7 +537,7 @@ public class OverviewScreen extends Screen {
         glow(g, cb[0] + cb[2] * 3 / 4, cb[1] + cb[3] / 3, cb[2] / 4, cb[3] / 3, pc, 30);
         int capW = caps(g, "PROFIT / LOSS", cb[0] + 8, cb[1] + 9, TEXT);
         long spanDays = pays.isEmpty() ? 0 : Math.max(1, (now() - pays.get(0).ts + DAY - 1) / DAY);
-        text(g, spanDays + (spanDays == 1 ? " day of data" : " days of data"), cb[0] + 14 + capW, cb[1] + 9, DIM, 0.62f, false);
+        text(g, spanDays + (spanDays == 1 ? " day of data" : " days of data"), cb[0] + 14 + capW, cb[1] + 9, DIM, 0.72f, false);
         String big = signedMoney(net);
         text(g, big, cb[0] + cb[2] - 8 - wb(big, 1.4f), cb[1] + 6, pc, 1.4f, true);
         chart(g, netSeries, cb[0] + 8, cb[1] + 26, cb[2] - 16, cb[3] - 34);
@@ -553,7 +555,7 @@ public class OverviewScreen extends Screen {
         g.fill(x, y, x + cw, y + 1, lineColor);
         caps(g, label, x + 8, y + 7, MUTED);
         text(g, value, x + 8, y + 17, valueColor, 1.6f, true);
-        text(g, sub, x + 8, y + 32, subColor, 0.62f, false);
+        text(g, sub, x + 8, y + 32, subColor, 0.72f, false);
         spark(g, series, x + 6, y + ch - 22, cw - 12, 18, lineColor);
     }
 
@@ -568,8 +570,8 @@ public class OverviewScreen extends Screen {
         final long hi = max + pad, lo = min - pad;
         int zy = y + (int) Math.round((double) hi / (hi - lo) * (ch - 1));
         g.fill(x, zy, x + cw, zy + 1, BORDER);
-        text(g, signedMoney(max), x, y - 1, DIM, 0.6f, false);
-        text(g, signedMoney(min), x, y + ch - 6, DIM, 0.6f, false);
+        text(g, signedMoney(max), x, y - 1, DIM, 0.72f, false);
+        text(g, signedMoney(min), x, y + ch - 6, DIM, 0.72f, false);
         int last = -1, lastX = x;
         for (int px = 0; px < cw; px++) {
             double t = (double) px * (vals.length - 1) / Math.max(1, cw - 1);
@@ -594,7 +596,7 @@ public class OverviewScreen extends Screen {
     private int pageTitle(GuiGraphicsExtractor g, String title, String sub) {
         int x = fx + 10, y = contentY();
         text(g, title, x, y, TEXT, 1.4f, true);
-        text(g, sub, x, y + 15, MUTED, 0.62f, false);
+        text(g, sub, x, y + 15, MUTED, 0.72f, false);
         return y + 26;
     }
 
@@ -617,19 +619,38 @@ public class OverviewScreen extends Screen {
 
     private void drawSearchFrame(GuiGraphicsExtractor g, int y) {
         if (searchBox == null) return;
-        int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = y;
-        int bc = searchBox.isFocused() ? PURPLE : 0xFF4A3F7A;
-        g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
-        g.fill(sbx, sby + 25, sbx + sbw, sby + 26, bc);
-        g.fill(sbx, sby, sbx + 1, sby + 26, bc);
-        g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 26, bc);
-        int mx0 = sbx + 7, my0 = sby + 8;
-        g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, MUTED);
-        g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, MUTED);
-        g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, MUTED);
-        g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, MUTED);
-        g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, MUTED);
-        g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, MUTED);
+        int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw;
+        searchField(g, sbx, y, sbw, 26, searchBox, "Search players");
+    }
+
+    /** Clean search field: dark fill, purple outline when typing, magnifier, your text and a blinking cursor. */
+    private void searchField(GuiGraphicsExtractor g, int x, int y, int bw, int bh, EditBox box, String hint) {
+        boolean focused = box != null && box.isFocused();
+        String value = box == null ? "" : box.getValue();
+        int bc = focused ? PURPLE : 0xFF3A3358;
+        g.fill(x, y, x + bw, y + bh, 0xFF0E0C17);
+        g.fill(x, y, x + bw, y + 1, bc);
+        g.fill(x, y + bh - 1, x + bw, y + bh, bc);
+        g.fill(x, y, x + 1, y + bh, bc);
+        g.fill(x + bw - 1, y, x + bw, y + bh, bc);
+        int mx0 = x + 8, my0 = y + (bh - 9) / 2;
+        int mc = focused ? TEXT : MUTED;
+        g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, mc);
+        g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, mc);
+        g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, mc);
+        g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, mc);
+        g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, mc);
+        g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, mc);
+        int tx = x + 22, ty = y + (bh - 7) / 2, maxW = bw - 30;
+        if (value.isEmpty()) {
+            text(g, hint, tx, ty, DIM, 0.8f, false);
+        } else {
+            String shown = value;
+            while (shown.length() > 1 && w(shown, 0.8f) > maxW) shown = shown.substring(1);   // keep the end visible
+            text(g, shown, tx, ty, TEXT, 0.8f, false);
+            tx += w(shown, 0.8f) + 1;
+        }
+        if (focused && (System.currentTimeMillis() / 500) % 2 == 0) g.fill(tx, ty - 1, tx + 1, ty + 8, TEXT);
     }
 
     // ================= WIN / LOSS =================
@@ -687,7 +708,7 @@ public class OverviewScreen extends Screen {
             PaymentLedger.Entry e = all.get(idx);
             int ty = ry + i * rowH;
             if (i % 2 == 0) g.fill(px + 4, ty - 3, px + pw - 8, ty + rowH - 3, 0xFF161323);
-            text(g, String.valueOf(idx + 1), cNum, ty + 1, DIM, 0.7f, false);
+            text(g, String.valueOf(idx + 1), cNum, ty + 1, DIM, 0.76f, false);
             face(g, e.name, cName, ty - 1, 10);
             text(g, e.name, cName + 14, ty, TEXT, 0.8f, true);
             text(g, String.valueOf(e.payments), cBets, ty + 1, MUTED, 0.75f, false);
@@ -735,7 +756,7 @@ public class OverviewScreen extends Screen {
             boolean isReady = lost >= st.rakeMin;
             int ty = ry + i * rowH, rx = px + 6, rw = pw - 18;
             box(g, rx, ty, rw, rowH - 3, 0xFF15121F, 0xFF1C1830);
-            text(g, String.valueOf(idx + 1), rx + 8, ty + 4, DIM, 0.7f, false);
+            text(g, String.valueOf(idx + 1), rx + 8, ty + 4, DIM, 0.76f, false);
             text(g, e.name, rx + 26, ty + 3, TEXT, 0.8f, true);
             String right = isReady ? "READY  owe " + Money.format(lost * st.rakePct / 100)
                     : Money.format(lost) + " / " + Money.format(st.rakeMin);
@@ -764,7 +785,7 @@ public class OverviewScreen extends Screen {
         g.fill(x, y, x + cw, y + 1, active ? GREEN : DIM);
         caps(g, active ? "SESSION LIVE" : "NO SESSION RUNNING", x + 8, y + 7, active ? GREEN : MUTED);
         text(g, hms(PaymentLedger.sessionMillis()), x + 8, y + 18, TEXT, 1.6f, true);
-        text(g, active ? "started " + dayTime(PaymentLedger.sessionStartTime()) : "last session", x + 8, y + 37, MUTED, 0.62f, false);
+        text(g, active ? "started " + dayTime(PaymentLedger.sessionStartTime()) : "last session", x + 8, y + 37, MUTED, 0.72f, false);
         int sx = x + cw / 3;
         stat(g, "RECEIVED", Money.format(in), sx, y + 10, TEXT);
         stat(g, "SENT", Money.format(out), sx + 70, y + 10, TEXT);
@@ -788,12 +809,12 @@ public class OverviewScreen extends Screen {
         List<PaymentLedger.SessionRecord> hist = PaymentLedger.history();
         int c1 = x + 8, c2 = x + cw * 26 / 100, c3 = x + cw * 42 / 100, c4 = x + cw * 58 / 100, c5 = x + cw * 74 / 100, cr = x + cw - 8;
         int hy = py + 24;
-        text(g, "STARTED", c1, hy, DIM, 0.62f, true);
-        text(g, "LENGTH", c2, hy, DIM, 0.62f, true);
-        text(g, "RECEIVED", c3, hy, DIM, 0.62f, true);
-        text(g, "SENT", c4, hy, DIM, 0.62f, true);
-        text(g, "PAYMENTS", c5, hy, DIM, 0.62f, true);
-        text(g, "PROFIT", cr - wb("PROFIT", 0.62f), hy, DIM, 0.62f, true);
+        text(g, "STARTED", c1, hy, DIM, 0.72f, true);
+        text(g, "LENGTH", c2, hy, DIM, 0.72f, true);
+        text(g, "RECEIVED", c3, hy, DIM, 0.72f, true);
+        text(g, "SENT", c4, hy, DIM, 0.72f, true);
+        text(g, "PAYMENTS", c5, hy, DIM, 0.72f, true);
+        text(g, "PROFIT", cr - wb("PROFIT", 0.72f), hy, DIM, 0.72f, true);
         int rowH = 14, ry = hy + 12, rows = Math.max(0, (py + ph - 4 - ry) / rowH);
         for (int i = 0; i < Math.min(rows, hist.size()); i++) {
             PaymentLedger.SessionRecord r = hist.get(i);
@@ -876,7 +897,7 @@ public class OverviewScreen extends Screen {
             durationBtns.add(0, btn(DURATION_LABELS[i], dx - bw, aCtrlY() + 2, bw, () -> { if (!Auction.running) Auction.durationMs = d; }));
             dx -= bw + 3;
         }
-        int cx = lx + w("TIMER COLOR", 0.7f) + 24;
+        int cx = lx + w("TIMER COLOR", 0.76f) + 24;
         for (int i = 0; i < TIMER_COLORS.length; i++) {
             final int col = TIMER_COLORS[i];
             colorBtns.add(btn("", cx + i * 16, aColorY(), 12, () -> Auction.color = col));
@@ -886,13 +907,13 @@ public class OverviewScreen extends Screen {
 
         int[] gr = aGrid();
         int rx = fx + 10 + aLeftW() + 8, rw = fx + fw - 10 - rx;
-        itemSearch = new EditBox(font, rx + 26, aTop() + 28, rw - 40, 12, Component.literal("Search items"));
-        itemSearch.setBordered(false);
+        itemSearch = new EditBox(font, -4000, -4000, 200, 12, Component.literal("Search items"));   // hidden: we draw it ourselves
         itemSearch.setMaxLength(32);
         itemSearch.setValue(itemQuery);
-        itemSearch.setHint(Component.literal("Search items"));
         itemSearch.setResponder(v -> { itemQuery = v; scroll = 0; });
-        addRenderableWidget(itemSearch);
+        addWidget(itemSearch);
+        Button click = btn("", rx + 8, aTop() + 22, rw - 16, () -> pendingFocus = itemSearch);
+        click.setHeight(18);
         gridBtn = addRenderableWidget(Button.builder(Component.literal(""), b -> pickItemAtMouse())
                 .bounds(gr[0], gr[1], gr[2], gr[3]).build());
     }
@@ -944,10 +965,10 @@ public class OverviewScreen extends Screen {
                 : Auction.ended ? (Auction.winner != null ? "SOLD" : "NO BIDS") : Auction.item.isEmpty() ? "PICK ITEM" : "READY";
         text(g, big, ccx - wb(big, 1.2f) / 2, ccy - 2, Auction.running ? Auction.color : TEXT, 1.2f, true);
         String nm = Auction.item.isEmpty() ? "choose on the right" : Auction.itemName;
-        text(g, nm, ccx - w(nm, 0.6f) / 2, ccy + 12, MUTED, 0.6f, false);
+        text(g, nm, ccx - w(nm, 0.72f) / 2, ccy + 12, MUTED, 0.72f, false);
         if (Auction.ended && Auction.winner != null) {
             String win = Auction.winner + " won the auction!  -  " + Money.format(Auction.winAmount);
-            text(g, win, ccx - wb(win, 0.7f) / 2, top + rh - 12, GREEN, 0.7f, true);
+            text(g, win, ccx - wb(win, 0.76f) / 2, top + rh - 12, GREEN, 0.76f, true);
         }
 
         // ---- controls ----
@@ -983,7 +1004,7 @@ public class OverviewScreen extends Screen {
             int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
             box(g, x, y, bw, bh, over(b, mx, my) ? 0xFF181526 : PANEL, BORDER);
             text(g, "Auction switch", x + 10, y + 5, TEXT, 0.8f, true);
-            text(g, "On: while an auction runs, money paid to you counts as bids, not bets.", x + 10, y + 17, DIM, 0.58f, false);
+            text(g, "On: while an auction runs, money paid to you counts as bids, not bets.", x + 10, y + 17, DIM, 0.72f, false);
             int sw = 24, sh = 12, sx = x + bw - sw - 10, sy = y + (bh - sh) / 2;
             g.fill(sx, sy, sx + sw, sy + sh, Auction.switchOn ? PURPLE : 0xFF2A2640);
             int kx = Auction.switchOn ? sx + sw - 10 : sx + 2;
@@ -1012,19 +1033,8 @@ public class OverviewScreen extends Screen {
         int rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx, rpH = contentBottom() - top;
         box(g, rx, top, rw, rpH, PANEL, BORDER);
         caps(g, "PICK AN ITEM", rx + 8, top + 8, TEXT);
-        if (!Auction.item.isEmpty()) text(g, Auction.itemName, rx + rw - 8 - wb(Auction.itemName, 0.7f), top + 8, TEXT, 0.7f, true);
-        int sbx = rx + 8, sby = top + 22, sbw = rw - 16;
-        int bc = itemSearch != null && itemSearch.isFocused() ? PURPLE : 0xFF4A3F7A;
-        g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
-        g.fill(sbx, sby + 17, sbx + sbw, sby + 18, bc);
-        g.fill(sbx, sby, sbx + 1, sby + 18, bc);
-        g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 18, bc);
-        int m0x = sbx + 6, m0y = sby + 5;
-        g.fill(m0x + 1, m0y, m0x + 5, m0y + 1, MUTED);
-        g.fill(m0x + 1, m0y + 5, m0x + 5, m0y + 6, MUTED);
-        g.fill(m0x, m0y + 1, m0x + 1, m0y + 5, MUTED);
-        g.fill(m0x + 5, m0y + 1, m0x + 6, m0y + 5, MUTED);
-        g.fill(m0x + 6, m0y + 6, m0x + 8, m0y + 8, MUTED);
+        if (!Auction.item.isEmpty()) text(g, Auction.itemName, rx + rw - 8 - wb(Auction.itemName, 0.76f), top + 8, TEXT, 0.76f, true);
+        searchField(g, rx + 8, top + 22, rw - 16, 18, itemSearch, "Search items");
 
         int[] gr = aGrid();
         List<Integer> items = filteredItems();
@@ -1045,7 +1055,7 @@ public class OverviewScreen extends Screen {
             }
         }
         scrollbar(g, gr[0] + gr[2] + 2, gr[1], gr[3], rows, totalRows);
-        text(g, items.size() + " items", rx + 8, contentBottom() - 11, DIM, 0.6f, false);
+        text(g, items.size() + " items", rx + 8, contentBottom() - 11, DIM, 0.72f, false);
     }
 
     // ================= PROFIT PANEL =================
@@ -1053,7 +1063,7 @@ public class OverviewScreen extends Screen {
         int x = fx + 10, y = contentY();
         caps(g, "PROFIT PANEL", x, y + 4, TEXT);
         text(g, "Turn the Balance HUD panels on or off. They appear and disappear on your screen right away.",
-                x, y + 16, DIM, 0.62f, false);
+                x, y + 16, DIM, 0.72f, false);
         String[] names = {"PROFIT TRACKER", "RAKEBACK", "BALANCE"};
         String[] about = {"The big profit panel with the chart, top winners / losers and recent bets",
                 "Who is close to rakeback and how much you owe them",
@@ -1068,7 +1078,7 @@ public class OverviewScreen extends Screen {
             if (on[i]) glow(g, bx + bw / 6, by + bh / 2, bw / 6, bh / 2, colors[i], 30);
             g.fill(bx, by, bx + 2, by + bh, on[i] ? colors[i] : BORDER);
             caps(g, names[i], bx + 14, by + 10, on[i] ? TEXT : MUTED);
-            text(g, about[i], bx + 14, by + 24, DIM, 0.62f, false);
+            text(g, about[i], bx + 14, by + 24, DIM, 0.72f, false);
             // switch
             int sw = 30, sh = 14, sx = bx + bw - sw - 14, sy = by + (bh - sh) / 2;
             g.fill(sx, sy, sx + sw, sy + sh, on[i] ? colors[i] : 0xFF2A2640);
@@ -1080,7 +1090,7 @@ public class OverviewScreen extends Screen {
         if (settingsButton != null) pill(g, settingsButton, false, mouseX, mouseY);
         int ny = panelButtons.isEmpty() ? y + 40 : panelButtons.get(panelButtons.size() - 1).getY() + 56;
         text(g, "These switches control the Balance HUD mod, so it needs its latest update installed too.",
-                x, ny, DIM, 0.62f, false);
+                x, ny, DIM, 0.72f, false);
     }
 
     private void stat(GuiGraphicsExtractor g, String label, String value, int x, int y, int color) {
