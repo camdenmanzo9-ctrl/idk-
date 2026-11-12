@@ -5,6 +5,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FontDescription;
+import net.minecraft.resources.Identifier;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
@@ -87,6 +89,7 @@ public final class Alerts {
         if (mc.player == null || mc.options.hideGui) return;
         Font f = mc.font;
         if (Settings.S.hudShow) renderProfitBox(g, f, mc);
+        renderAuctionBox(g, f, mc);
         if (current != null) renderPopup(g, f, mc);
     }
 
@@ -132,6 +135,91 @@ public final class Alerts {
         g.pose().popMatrix();
         g.text(f, sub, x + 8, y + h - 10, 0xFF9AA0AD, false);
         g.pose().popMatrix();
+    }
+
+    // ---------------- auction box (shows while an auction runs) ----------------
+    private static final Style INTER = Style.EMPTY.withFont(
+            new FontDescription.Resource(Identifier.fromNamespaceAndPath("bettors_dashboard", "inter")));
+    private static final Style INTER_BOLD = Style.EMPTY.withFont(
+            new FontDescription.Resource(Identifier.fromNamespaceAndPath("bettors_dashboard", "inter_bold")));
+
+    private static void itext(GuiGraphicsExtractor g, Font f, String s, int x, int y, int color, float scale, boolean bold) {
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(scale, scale);
+        g.text(f, Component.literal(s).withStyle(bold ? INTER_BOLD : INTER), 0, 0, color, false);
+        g.pose().popMatrix();
+    }
+
+    private static int iw(Font f, String s, float scale, boolean bold) {
+        return (int) Math.ceil(f.width(Component.literal(s).withStyle(bold ? INTER_BOLD : INTER)) * scale);
+    }
+
+    private static void centered(GuiGraphicsExtractor g, Font f, String s, int cx, int y, int color, float scale, boolean bold) {
+        itext(g, f, s, cx - iw(f, s, scale, bold) / 2, y, color, scale, bold);
+    }
+
+    private static void renderAuctionBox(GuiGraphicsExtractor g, Font f, Minecraft mc) {
+        long now = System.currentTimeMillis();
+        boolean justEnded = Auction.ended && now - Auction.endAt < 6000;
+        if ((!Auction.running && !justEnded) || Auction.item.isEmpty()) return;
+
+        int w = 104, h = 96;
+        int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
+        int x = sw - w - 8, y = sh / 2 - h / 2;
+        int cx = x + w / 2;
+
+        // soft rounded panel
+        int bg = 0xD80E0C16, bd = 0x40FFFFFF;
+        g.fill(x + 2, y, x + w - 2, y + h, bg);
+        g.fill(x, y + 2, x + w, y + h - 2, bg);
+        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, bg);
+        g.fill(x + 2, y, x + w - 2, y + 1, bd);
+        g.fill(x + 2, y + h - 1, x + w - 2, y + h, bd);
+        g.fill(x, y + 2, x + 1, y + h - 2, bd);
+        g.fill(x + w - 1, y + 2, x + w, y + h - 2, bd);
+
+        // spaced title
+        String title = "AUCTION";
+        int tw = 0;
+        for (char c : title.toCharArray()) tw += iw(f, String.valueOf(c), 0.7f, true) + 2;
+        int tx = cx - tw / 2;
+        for (char c : title.toCharArray()) {
+            String ch = String.valueOf(c);
+            itext(g, f, ch, tx, y + 6, 0xFFE8E6F0, 0.7f, true);
+            tx += iw(f, ch, 0.7f, true) + 2;
+        }
+
+        // ring: lit part = time left, in the chosen timer color
+        int ccy = y + 40, rad = 20;
+        float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
+        for (int a = 0; a < 360; a += 2) {
+            double ang = Math.toRadians(a - 90);
+            int px = cx + (int) Math.round(Math.cos(ang) * rad), py = ccy + (int) Math.round(Math.sin(ang) * rad);
+            boolean lit = a < frac * 360;
+            g.fill(px - 1, py - 1, px + 2, py + 2, lit ? Auction.color : 0x50FFFFFF);
+        }
+        g.item(Auction.item, cx - 8, ccy - 13);
+        String t = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
+                : (Auction.winner != null ? "SOLD" : "ENDED");
+        centered(g, f, t, cx, ccy + 5, 0xFFFFFFFF, 0.8f, true);
+
+        // leader / winner
+        String name = null;
+        long amt = 0;
+        if (Auction.running) {
+            var bids = Auction.sortedBids();
+            if (!bids.isEmpty()) { name = bids.get(0).getKey(); amt = bids.get(0).getValue(); }
+        } else if (Auction.winner != null) {
+            name = Auction.winner;
+            amt = Auction.winAmount;
+        }
+        if (name != null) {
+            centered(g, f, name + " " + Money.format(amt), cx, y + 68, 0xFF4ADE80, 0.8f, true);
+            centered(g, f, Auction.running ? "is winning" : "won!", cx, y + 80, 0xFF9AA0AD, 0.65f, false);
+        } else {
+            centered(g, f, Auction.running ? "No bids yet" : "No bids", cx, y + 72, 0xFF9AA0AD, 0.7f, false);
+        }
     }
 
     private static int rainbow(double t) {

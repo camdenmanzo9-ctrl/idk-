@@ -47,6 +47,11 @@ public final class PaymentListener {
     private static void log(String player, String amount, boolean incoming) {
         try {
             long amt = Money.parse(amount);
+            if (incoming && Auction.capturing()) {   // auction running: this payment is a bid, not a bet
+                Auction.bid(player, amt);
+                if (debug) chat("auction bid " + player + " " + Money.format(amt), ChatFormatting.LIGHT_PURPLE);
+                return;
+            }
             if (incoming) PaymentLedger.record(player, amt, 0);
             else PaymentLedger.record(player, 0, amt);
             Alerts.onPayment(player, amt, incoming);

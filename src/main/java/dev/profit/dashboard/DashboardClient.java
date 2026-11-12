@@ -99,6 +99,7 @@ public class DashboardClient implements ClientModInitializer {
                 PayConfirmScreen.pending = null;
             }
             Alerts.tick();
+            Auction.tick();
             long now = System.currentTimeMillis();
             if (client.player != null && lastTick > 0) PaymentLedger.addPlaytime(Math.min(1000, now - lastTick));
             lastTick = now;

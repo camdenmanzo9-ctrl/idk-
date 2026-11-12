@@ -29,7 +29,7 @@ public class OverviewScreen extends Screen {
     private static final long DAY = 24L * 60 * 60 * 1000;
     private static final String[] RANGE_LABELS = {"24H", "7D", "30D", "ALL"};
     private static final long[] RANGES = {DAY, 7 * DAY, 30 * DAY, 0};
-    private static final String[] TAB_LABELS = {"OVERVIEW", "WIN / LOSS", "RAKEBACK", "SESSIONS", "PROFIT PANEL"};
+    private static final String[] TAB_LABELS = {"OVERVIEW", "WIN / LOSS", "RAKEBACK", "SESSIONS", "AUCTIONS", "PROFIT PANEL"};
 
     private static int tab = 0;
     private static int range = 1;           // 7D like the picture
@@ -48,6 +48,7 @@ public class OverviewScreen extends Screen {
     private static int scroll = 0;
 
     private int fx, fy, fw, fh, escX;
+    private boolean showEsc = true;
 
     public OverviewScreen() {
         super(Component.literal("Snowy's Dashboard"));
@@ -107,6 +108,7 @@ public class OverviewScreen extends Screen {
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         int k = event.key();
         if (searchBox != null && searchBox.isFocused() && k != GLFW.GLFW_KEY_ESCAPE) return super.keyPressed(event);
+        if (itemSearch != null && itemSearch.isFocused() && k != GLFW.GLFW_KEY_ESCAPE) return super.keyPressed(event);
         if (k >= GLFW.GLFW_KEY_1 && k <= GLFW.GLFW_KEY_4) { range = k - GLFW.GLFW_KEY_1; return true; }
         if (k == GLFW.GLFW_KEY_SPACE) { togglePause(); return true; }
         if (k == GLFW.GLFW_KEY_TAB) { tab = (tab + 1) % TAB_LABELS.length; scroll = 0; rebuildWidgets(); return true; }
@@ -154,16 +156,28 @@ public class OverviewScreen extends Screen {
         escX = bx - 4 - setW - 8;   // "ESC close" is drawn here
         settingsButton = null;
         searchBox = null;
+        itemSearch = null;
+        auctionButtons.clear();
 
-        // center: tabs
-        int tabsW = 0;
-        for (String t : TAB_LABELS) tabsW += small(t) + 4;
-        int tx = fx + (fw - tabsW) / 2;
+        // tabs: centered in the space between the left badge and the right-side buttons
+        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.65f) + 10 + capsW("DATA LIVE") + 16 + 10;
+        int rightStart = escX - w("ESC close", 0.62f) - 8;
+        int gap = 3, pad = 12, tabsW = 0;
+        for (String t : TAB_LABELS) tabsW += w(t, 0.75f) + pad + gap;
+        if (tabsW > rightStart - leftEnd) {               // tight screen: slimmer tabs, drop the "ESC close" hint
+            pad = 8; gap = 2; tabsW = 0;
+            for (String t : TAB_LABELS) tabsW += w(t, 0.75f) + pad + gap;
+            showEsc = false;
+            rightStart = headerSettings.getX() - 6;
+        } else {
+            showEsc = true;
+        }
+        int tx = Math.max(leftEnd, leftEnd + (rightStart - leftEnd - tabsW) / 2);
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int t = i;
-            int bw = small(TAB_LABELS[i]);
+            int bw = w(TAB_LABELS[i], 0.75f) + pad;
             tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; rebuildWidgets(); }));
-            tx += bw + 4;
+            tx += bw + gap;
         }
 
         if (tab == 0) {
@@ -190,11 +204,9 @@ public class OverviewScreen extends Screen {
             searchBox.setResponder(v -> { search = v; scroll = 0; });
             addRenderableWidget(searchBox);
         } else if (tab == 4) {
+            initAuctions();
+        } else if (tab == 5) {
             Panels.load();
-            int sbw = small("OPEN SETTINGS") + 10;
-            settingsButton = btn("OPEN SETTINGS", fx + fw - 10 - sbw, contentY() + 2, sbw, () -> {
-                if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
-            });
             int y = contentY() + 30, rowH = 44, x = fx + 10, rw = fw - 20;
             for (int i = 0; i < 3; i++) {
                 final int idx = i;
@@ -210,6 +222,19 @@ public class OverviewScreen extends Screen {
             sessionButton = addRenderableWidget(Button.builder(Component.literal(""), b -> onSession())
                     .bounds(fx + fw - 10 - bw - 10, contentY() + 18, bw, 16).build());
         }
+    }
+
+    // Display copy of you (empty hands, no cape), made once per world
+    private static PreviewPlayer previewPlayer;
+    private static Object previewLevel;
+
+    private PreviewPlayer preview() {
+        if (previewPlayer == null || previewLevel != minecraft.level) {
+            previewPlayer = new PreviewPlayer(minecraft.level, minecraft.player.getGameProfile());
+            previewLevel = minecraft.level;
+        }
+        previewPlayer.refreshParts();
+        return previewPlayer;
     }
 
     private void onSession() {
@@ -364,8 +389,12 @@ public class OverviewScreen extends Screen {
         box(g, fx, fy, fw, fh, FRAME, BORDER);
     }
 
+    private int lastMouseX, lastMouseY;
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        lastMouseX = mouseX;
+        lastMouseY = mouseY;
         super.extractRenderState(g, mouseX, mouseY, delta);
         drawHeader(g, mouseX, mouseY);
         switch (tab) {
@@ -373,6 +402,7 @@ public class OverviewScreen extends Screen {
             case 1 -> drawWinLoss(g);
             case 2 -> drawRakeback(g);
             case 3 -> drawSessions(g, mouseX, mouseY);
+            case 4 -> drawAuctions(g, mouseX, mouseY);
             default -> drawPanels(g, mouseX, mouseY);
         }
         String foot = "1-4 range   SPACE pause   TAB next page   ESC close";
@@ -400,7 +430,7 @@ public class OverviewScreen extends Screen {
 
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
-        text(g, "ESC close", escX - w("ESC close", 0.62f), fy + 11, DIM, 0.62f, false);
+        if (showEsc) text(g, "ESC close", escX - w("ESC close", 0.62f), fy + 11, DIM, 0.62f, false);
         if (headerSettings != null) pill(g, headerSettings, false, mx, my);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
     }
@@ -415,7 +445,7 @@ public class OverviewScreen extends Screen {
             int bx1 = fx + 14, by1 = wy, bx2 = fx + 50, by2 = wy + 46;
             glow(g, (bx1 + bx2) / 2, (by1 + by2) / 2, 26, 26, PURPLE, 34);
             InventoryScreen.extractEntityInInventoryFollowsMouse(g, bx1, by1, bx2, by2, 20, 0.0625f,
-                    (bx1 + bx2) / 2f, (by1 + by2) / 2f, minecraft.player);
+                    (bx1 + bx2) / 2f, (by1 + by2) / 2f, preview());
         } else {
             face(g, me, fx + 16, wy + 4, 34);
         }
@@ -778,6 +808,244 @@ public class OverviewScreen extends Screen {
             text(g, p, cr - wb(p, 0.75f), ty, r.profit() >= 0 ? GREEN : RED, 0.75f, true);
         }
         if (hist.isEmpty()) text(g, "Ended sessions show up here", c1, ry, DIM, 0.85f, false);
+    }
+
+    // ================= AUCTIONS =================
+    private EditBox itemSearch;
+    private static String itemQuery = "";
+    private final java.util.Map<Button, Runnable> auctionButtons = new java.util.LinkedHashMap<>();
+    private Button startBtn, clearBtn, switchBtn, gridBtn;
+    private final List<Button> durationBtns = new ArrayList<>();
+    private final List<Button> colorBtns = new ArrayList<>();
+    private static final long[] DURATIONS = {15_000, 30_000, 45_000, 60_000, 120_000, 300_000};
+    private static final String[] DURATION_LABELS = {"15s", "30s", "45s", "1m", "2m", "5m"};
+    private static final int[] TIMER_COLORS = {GOLD, PURPLE, GREEN, RED, 0xFF5B8CFF, 0xFFF472B6, 0xFF3ADFDF, 0xFFF2F0FA};
+
+    /** Every item in the game with its name, built once. */
+    private static List<net.minecraft.world.item.ItemStack> allItems;
+    private static List<String> allNames;
+
+    private static void loadItems() {
+        if (allItems != null) return;
+        allItems = new ArrayList<>();
+        allNames = new ArrayList<>();
+        for (net.minecraft.world.item.Item it : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+            net.minecraft.world.item.ItemStack st = new net.minecraft.world.item.ItemStack(it);
+            if (st.isEmpty()) continue;
+            allItems.add(st);
+            allNames.add(st.getHoverName().getString());
+        }
+    }
+
+    private List<Integer> filteredItems() {
+        loadItems();
+        String q = itemQuery.trim().toLowerCase(Locale.US);
+        List<Integer> out = new ArrayList<>();
+        for (int i = 0; i < allItems.size(); i++)
+            if (q.isEmpty() || allNames.get(i).toLowerCase(Locale.US).contains(q)) out.add(i);
+        return out;
+    }
+
+    // layout shared by buttons and drawing
+    private int aTop() { return contentY() + 26; }
+    private int aLeftW() { return (fw - 28) * 49 / 100; }
+    private int aRingH() { return Math.max(96, Math.min(150, (contentBottom() - aTop()) * 42 / 100)); }
+    private int aCtrlY() { return aTop() + aRingH() + 6; }
+    private int aColorY() { return aCtrlY() + 22; }
+    private int aSwitchY() { return aColorY() + 18; }
+    private int aBidsY() { return aSwitchY() + 34; }
+    private int[] aGrid() {   // x, y, w, h of the item grid
+        int rx = fx + 10 + aLeftW() + 8, rw = fx + fw - 10 - rx;
+        return new int[]{rx + 8, aTop() + 46, rw - 16, contentBottom() - 16 - (aTop() + 46)};
+    }
+
+    private void initAuctions() {
+        durationBtns.clear();
+        colorBtns.clear();
+        int lx = fx + 10, lw = aLeftW();
+        startBtn = btn("START AUCTION", lx, aCtrlY(), w("START AUCTION", 0.75f) + 30, () -> {
+            if (Auction.running) Auction.endAt = System.currentTimeMillis();   // end now
+            else Auction.start();
+        });
+        startBtn.setHeight(16);
+        clearBtn = btn("Clear", startBtn.getX() + startBtn.getWidth() + 8, aCtrlY() + 2, w("Clear", 0.75f) + 10, Auction::clear);
+        int dx = lx + lw;
+        for (int i = DURATION_LABELS.length - 1; i >= 0; i--) {
+            final long d = DURATIONS[i];
+            int bw = small(DURATION_LABELS[i]);
+            durationBtns.add(0, btn(DURATION_LABELS[i], dx - bw, aCtrlY() + 2, bw, () -> { if (!Auction.running) Auction.durationMs = d; }));
+            dx -= bw + 3;
+        }
+        int cx = lx + w("TIMER COLOR", 0.7f) + 24;
+        for (int i = 0; i < TIMER_COLORS.length; i++) {
+            final int col = TIMER_COLORS[i];
+            colorBtns.add(btn("", cx + i * 16, aColorY(), 12, () -> Auction.color = col));
+        }
+        switchBtn = btn("", lx, aSwitchY(), lw, () -> Auction.switchOn = !Auction.switchOn);
+        switchBtn.setHeight(28);
+
+        int[] gr = aGrid();
+        int rx = fx + 10 + aLeftW() + 8, rw = fx + fw - 10 - rx;
+        itemSearch = new EditBox(font, rx + 26, aTop() + 28, rw - 40, 12, Component.literal("Search items"));
+        itemSearch.setBordered(false);
+        itemSearch.setMaxLength(32);
+        itemSearch.setValue(itemQuery);
+        itemSearch.setHint(Component.literal("Search items"));
+        itemSearch.setResponder(v -> { itemQuery = v; scroll = 0; });
+        addRenderableWidget(itemSearch);
+        gridBtn = addRenderableWidget(Button.builder(Component.literal(""), b -> pickItemAtMouse())
+                .bounds(gr[0], gr[1], gr[2], gr[3]).build());
+    }
+
+    private static final int CELL = 20;
+
+    private void pickItemAtMouse() {
+        int[] gr = aGrid();
+        int cols = Math.max(1, gr[2] / CELL);
+        int col = (lastMouseX - gr[0]) / CELL, row = (lastMouseY - gr[1]) / CELL;
+        if (col < 0 || col >= cols || row < 0) return;
+        List<Integer> items = filteredItems();
+        int idx = (scroll + row) * cols + col;
+        if (idx >= 0 && idx < items.size() && !Auction.running) {
+            Auction.item = allItems.get(items.get(idx)).copy();
+            Auction.itemName = allNames.get(items.get(idx));
+            Auction.ended = false;
+        }
+    }
+
+    private void itemIcon(GuiGraphicsExtractor g, net.minecraft.world.item.ItemStack st, int x, int y, float scale) {
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(scale, scale);
+        g.item(st, 0, 0);
+        g.pose().popMatrix();
+    }
+
+    private void drawAuctions(GuiGraphicsExtractor g, int mx, int my) {
+        pageTitle(g, "Auctions", "Pick an item, set the timer and start. The biggest single payment before it hits 0 wins.");
+        int lx = fx + 10, lw = aLeftW(), top = aTop();
+
+        // ---- ring panel ----
+        int rh = aRingH();
+        box(g, lx, top, lw, rh, PANEL, BORDER);
+        String t = "AUCTIONS";
+        caps(g, t, lx + (lw - capsW(t)) / 2, top + 8, TEXT);
+        int ccx = lx + lw / 2, ccy = top + rh / 2 + 6, rad = Math.max(28, Math.min(46, rh / 2 - 16));
+        float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
+        int gray = 0xFF55516A;
+        for (int a = 0; a < 360; a++) {
+            double ang = Math.toRadians(a - 90);
+            int px = ccx + (int) Math.round(Math.cos(ang) * rad), py = ccy + (int) Math.round(Math.sin(ang) * rad);
+            boolean lit = Auction.running && a < frac * 360;
+            g.fill(px - 2, py - 2, px + 3, py + 3, lit ? Auction.color : gray);
+        }
+        if (!Auction.item.isEmpty()) itemIcon(g, Auction.item, ccx - 12, ccy - 26, 1.5f);
+        String big = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
+                : Auction.ended ? (Auction.winner != null ? "SOLD" : "NO BIDS") : Auction.item.isEmpty() ? "PICK ITEM" : "READY";
+        text(g, big, ccx - wb(big, 1.2f) / 2, ccy - 2, Auction.running ? Auction.color : TEXT, 1.2f, true);
+        String nm = Auction.item.isEmpty() ? "choose on the right" : Auction.itemName;
+        text(g, nm, ccx - w(nm, 0.6f) / 2, ccy + 12, MUTED, 0.6f, false);
+        if (Auction.ended && Auction.winner != null) {
+            String win = Auction.winner + " won the auction!  -  " + Money.format(Auction.winAmount);
+            text(g, win, ccx - wb(win, 0.7f) / 2, top + rh - 12, GREEN, 0.7f, true);
+        }
+
+        // ---- controls ----
+        {
+            Button b = startBtn;
+            int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
+            boolean disabled = !Auction.running && Auction.item.isEmpty();
+            int col = Auction.running ? RED : disabled ? 0xFF3A3550 : PURPLE;
+            g.fill(x, y, x + bw, y + bh, over(b, mx, my) && !disabled ? alpha(col, 230) : col);
+            int tx0 = x + 8, ty0 = y + 4;
+            if (Auction.running) g.fill(tx0, ty0, tx0 + 7, ty0 + 7, TEXT);
+            else for (int i = 0; i < 4; i++) g.fill(tx0 + i, ty0 + i, tx0 + i + 1, ty0 + 8 - i, TEXT);
+            String s = Auction.running ? "END NOW" : "START AUCTION";
+            text(g, s, x + 20, y + 4, TEXT, 0.75f, true);
+        }
+        text(g, "Clear", clearBtn.getX() + 5, clearBtn.getY() + 3, over(clearBtn, mx, my) ? TEXT : MUTED, 0.75f, false);
+        for (int i = 0; i < durationBtns.size(); i++) pill(g, durationBtns.get(i), DURATIONS[i] == Auction.durationMs, mx, my);
+
+        caps(g, "TIMER COLOR", lx, aColorY() + 3, DIM);
+        for (int i = 0; i < colorBtns.size(); i++) {
+            Button b = colorBtns.get(i);
+            int x = b.getX(), y = b.getY();
+            boolean sel = TIMER_COLORS[i] == Auction.color;
+            if (sel) { g.fill(x - 1, y, x + 13, y + 12, TEXT); }
+            g.fill(x + 1, y + 1, x + 11, y + 11, TIMER_COLORS[i]);
+            g.fill(x + 2, y, x + 10, y + 12, TIMER_COLORS[i]);
+            g.fill(x, y + 2, x + 12, y + 10, TIMER_COLORS[i]);
+        }
+
+        // ---- auction switch ----
+        {
+            Button b = switchBtn;
+            int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
+            box(g, x, y, bw, bh, over(b, mx, my) ? 0xFF181526 : PANEL, BORDER);
+            text(g, "Auction switch", x + 10, y + 5, TEXT, 0.8f, true);
+            text(g, "On: while an auction runs, money paid to you counts as bids, not bets.", x + 10, y + 17, DIM, 0.58f, false);
+            int sw = 24, sh = 12, sx = x + bw - sw - 10, sy = y + (bh - sh) / 2;
+            g.fill(sx, sy, sx + sw, sy + sh, Auction.switchOn ? PURPLE : 0xFF2A2640);
+            int kx = Auction.switchOn ? sx + sw - 10 : sx + 2;
+            g.fill(kx, sy + 2, kx + 8, sy + sh - 2, TEXT);
+        }
+
+        // ---- bids ----
+        int by = aBidsY(), bh = contentBottom() - by;
+        if (bh > 24) {
+            box(g, lx, by, lw, bh, PANEL, BORDER);
+            caps(g, "BIDS", lx + 8, by + 7, TEXT);
+            List<java.util.Map.Entry<String, Long>> bids = Auction.sortedBids();
+            int rowH = 14, ry = by + 20, rows = Math.max(0, (by + bh - 4 - ry) / rowH);
+            for (int i = 0; i < Math.min(rows, bids.size()); i++) {
+                var e = bids.get(i);
+                int ty = ry + i * rowH;
+                face(g, e.getKey(), lx + 8, ty, 10);
+                text(g, e.getKey(), lx + 22, ty + 1, TEXT, 0.8f, true);
+                String amt = Money.format(e.getValue());
+                text(g, amt, lx + lw - 8 - wb(amt, 0.8f), ty + 1, GREEN, 0.8f, true);
+            }
+            if (bids.isEmpty()) text(g, Auction.running ? "Waiting for bids..." : "No bids yet", lx + 8, ry, DIM, 0.75f, false);
+        }
+
+        // ---- pick an item ----
+        int rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx, rpH = contentBottom() - top;
+        box(g, rx, top, rw, rpH, PANEL, BORDER);
+        caps(g, "PICK AN ITEM", rx + 8, top + 8, TEXT);
+        if (!Auction.item.isEmpty()) text(g, Auction.itemName, rx + rw - 8 - wb(Auction.itemName, 0.7f), top + 8, TEXT, 0.7f, true);
+        int sbx = rx + 8, sby = top + 22, sbw = rw - 16;
+        int bc = itemSearch != null && itemSearch.isFocused() ? PURPLE : 0xFF4A3F7A;
+        g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
+        g.fill(sbx, sby + 17, sbx + sbw, sby + 18, bc);
+        g.fill(sbx, sby, sbx + 1, sby + 18, bc);
+        g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 18, bc);
+        int m0x = sbx + 6, m0y = sby + 5;
+        g.fill(m0x + 1, m0y, m0x + 5, m0y + 1, MUTED);
+        g.fill(m0x + 1, m0y + 5, m0x + 5, m0y + 6, MUTED);
+        g.fill(m0x, m0y + 1, m0x + 1, m0y + 5, MUTED);
+        g.fill(m0x + 5, m0y + 1, m0x + 6, m0y + 5, MUTED);
+        g.fill(m0x + 6, m0y + 6, m0x + 8, m0y + 8, MUTED);
+
+        int[] gr = aGrid();
+        List<Integer> items = filteredItems();
+        int cols = Math.max(1, gr[2] / CELL), rows = Math.max(1, gr[3] / CELL);
+        int totalRows = (items.size() + cols - 1) / cols;
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, totalRows - rows)));
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                int idx = (scroll + r) * cols + c;
+                if (idx >= items.size()) break;
+                int x = gr[0] + c * CELL, y = gr[1] + r * CELL;
+                var st = allItems.get(items.get(idx));
+                boolean hot = mx >= x && mx < x + CELL && my >= y && my < y + CELL;
+                boolean sel = !Auction.item.isEmpty() && Auction.item.getItem() == st.getItem();
+                if (sel) box(g, x, y, CELL - 2, CELL - 2, alpha(PURPLE, 70), PURPLE);
+                else if (hot) g.fill(x, y, x + CELL - 2, y + CELL - 2, 0xFF1E1A2E);
+                itemIcon(g, st, x + 1, y + 1, 1f);
+            }
+        }
+        scrollbar(g, gr[0] + gr[2] + 2, gr[1], gr[3], rows, totalRows);
+        text(g, items.size() + " items", rx + 8, contentBottom() - 11, DIM, 0.6f, false);
     }
 
     // ================= PROFIT PANEL =================
