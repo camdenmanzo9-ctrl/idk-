@@ -51,7 +51,7 @@ public class PayConfirmScreen extends Screen {
         Alerts.playConfirmSound();
         if (test || minecraft == null) { onClose(); return; }
         approved = command;
-        minecraft.setScreen(new ChatScreen("/" + command));   // back in your chat box: press Enter to send it yourself
+                minecraft.setScreen(new ChatScreen("/" + command, false));
     }
 
     private static int argb(int rgb, int a) { return (a << 24) | (rgb & 0xFFFFFF); }
