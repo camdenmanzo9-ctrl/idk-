@@ -724,9 +724,9 @@ public class OverviewScreen extends Screen {
 
     /** Text with a soft glow around the letters. */
     private void glowText(GuiGraphicsExtractor g, String s, int x, int y, int color, float scale) {
-        int[][] offs = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
-        for (int[] o : offs) text(g, s, x + o[0], y + o[1], alpha(PURPLE, 34), scale, true);
-        for (int[] o : new int[][]{{-3, 0}, {3, 0}, {0, -3}, {0, 3}}) text(g, s, x + o[0], y + o[1], alpha(PURPLE, 16), scale, true);
+        // soft light BEHIND the name; the letters themselves stay sharp
+        int tw = wb(s, scale), th = Math.round(9 * scale);
+        softGlow(g, x + tw / 2, y + th / 2, tw / 2 + 10, th / 2 + 6, PURPLE, 40);
         text(g, s, x, y, color, scale, true);
     }
 
@@ -885,7 +885,7 @@ public class OverviewScreen extends Screen {
     private void card(GuiGraphicsExtractor g, int x, int y, int cw, int ch, String label, String value, String sub,
                       int lineColor, int valueColor, int subColor, long[] series) {
         box(g, x, y, cw, ch, PANEL, BORDER);
-        softGlow(g, x + cw * 55 / 100, y + ch / 2, cw / 3, ch / 2 - 4, lineColor, 26);
+        softGlow(g, x + cw * 55 / 100, y + ch / 2, cw / 3, ch / 2 - 4, lineColor, 12);
         caps(g, label, x + 10, y + 9, MUTED);
         round(g, x + cw - 14, y + 10, 5, 5, 2, lineColor);
         text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
