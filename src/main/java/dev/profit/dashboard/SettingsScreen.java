@@ -100,6 +100,7 @@ public class SettingsScreen extends Screen {
                 picker("Theme", () -> PaymentLedger.isChristmas() ? "Christmas" : "Classic",
                         () -> PaymentLedger.setChristmas(!PaymentLedger.isChristmas()),
                         () -> PaymentLedger.setChristmas(!PaymentLedger.isChristmas()));
+                toggle("Skin faces", () -> s.skinFaces, v -> s.skinFaces = v);
                 action("Reset all settings", () -> { Settings.resetAll(); rebuildWidgets(); });
             }
             case CHAT -> {

@@ -13,6 +13,7 @@ import java.util.List;
 public final class Settings {
     // General
     public int accent = 0x7CFF3A;
+    public boolean skinFaces = true;   // false = purple letter circles like the reference picture
 
     // Chat
     public boolean chatColors = true, boldNames = false, boldAmounts = false;
@@ -83,6 +84,10 @@ public final class Settings {
                 new BoardGame("horse", "Horse game", "x2.5")));
         return t;
     }
+
+    // Rakeback (Rakeback tab): give back this % of what a player lost, once they've lost at least rakeMin
+    public int rakePct = 10;
+    public long rakeMin = 1_000_000_000L;
 
     // ---------------------------------------------------------------------------------
 
