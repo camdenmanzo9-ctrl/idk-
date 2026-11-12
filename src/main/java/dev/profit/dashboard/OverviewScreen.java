@@ -510,25 +510,20 @@ public class OverviewScreen extends Screen {
 
     /** Thin, smooth, wavy line (no fill), soft edges. */
     private void smoothLine(GuiGraphicsExtractor g, long[] vals, int x, int y, int w, int h, int color) {
-        if (vals.length < 2) { g.fill(x, y + h - 1, x + w, y + h, alpha(color, 70)); return; }
+        if (vals.length < 2) { g.fill(x, y + h - 2, x + w, y + h, alpha(color, 90)); return; }
         long min = Long.MAX_VALUE, max = Long.MIN_VALUE;
         for (long v : vals) { min = Math.min(min, v); max = Math.max(max, v); }
         if (max == min) { max++; min--; }
-        double prev = Double.NaN;
+        int prev = Integer.MIN_VALUE;
         for (int px = 0; px < w; px++) {
             double t = (double) px * (vals.length - 1) / Math.max(1, w - 1);
             int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
-            double f = t - i0, e = (1 - Math.cos(Math.PI * f)) / 2;   // eased between points: rounded waves
+            double f = t - i0, e = (1 - Math.cos(Math.PI * f)) / 2;   // rounded waves between points
             double v = vals[i0] + (vals[i1] - vals[i0]) * e;
-            double fy = y + 1 + (max - v) / (double) (max - min) * (h - 3);
-            double a = Double.isNaN(prev) ? fy : prev;
-            double lo = Math.min(a, fy) - 0.55, hi = Math.max(a, fy) + 0.55;
-            int c0 = (int) Math.ceil(lo), c1 = (int) Math.floor(hi);
-            if (c1 > c0) g.fill(x + px, c0, x + px + 1, c1, color);
-            float tc = (float) (c0 - lo), bc = (float) (hi - c1);
-            if (tc > 0.05f) g.fill(x + px, c0 - 1, x + px + 1, c0, alpha(color, (int) (255 * tc)));
-            if (bc > 0.05f) g.fill(x + px, c1, x + px + 1, c1 + 1, alpha(color, (int) (255 * bc)));
-            prev = fy;
+            int yy = y + (int) Math.round((max - v) / (double) (max - min) * (h - 2));
+            int a = prev == Integer.MIN_VALUE ? yy : prev;
+            g.fill(x + px, Math.min(a, yy), x + px + 1, Math.max(a, yy) + 2, color);   // solid, 2 px
+            prev = yy;
         }
     }
 
@@ -671,8 +666,7 @@ public class OverviewScreen extends Screen {
     private void drawHeader(GuiGraphicsExtractor g, int mx, int my) {
         int hy = fy + 10;
         int lx = fx + 10;
-        ring(g, lx + 4, hy + 4, 8, 2, 1f, alpha(PURPLE, 40), alpha(PURPLE, 40));   // soft glow
-        ring(g, lx + 4, hy + 4, 6, 2, 1f, PURPLE, PURPLE);                         // the ring
+        donutRing(g, lx + 4, hy + 4);
         int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
         text(g, "v1.0", x, hy + 2, DIM, 0.74f, false);
         x += w("v1.0", 0.74f) + 10;
@@ -720,6 +714,23 @@ public class OverviewScreen extends Screen {
         g.fill(cx + 3, cy - 1, cx + 4, cy, 0xFF60A5FA);
         g.fill(cx - 4, cy - 1, cx - 3, cy, 0xFF4ADE80);
         g.fill(cx, cy - 5, cx + 1, cy - 4, 0xFF60A5FA);
+    }
+
+    /** Sharp purple donut: thick ring, clear hole, light top-left, shaded bottom-right. No soft pixels. */
+    private static void donutRing(GuiGraphicsExtractor g, int cx, int cy) {
+        final int LIGHT = 0xFFC4A5FF, MID = 0xFF8B5CF6, DARK = 0xFF5B3BB0;
+        double R = 6.5, HOLE = 2.6;
+        for (int dy = -7; dy <= 7; dy++) {
+            for (int dx = -7; dx <= 7; dx++) {
+                double px = dx + 0.5, py = dy + 0.5;
+                double d = Math.sqrt(px * px + py * py);
+                if (d > R || d < HOLE) continue;
+                double light = -(px + py) / Math.max(0.001, d);           // + toward the top-left
+                double inner = (d - HOLE) / (R - HOLE);                   // 0 at the hole, 1 at the edge
+                int col = light > 0.55 && inner > 0.25 ? LIGHT : light < -0.45 ? DARK : MID;
+                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, col);
+            }
+        }
     }
 
     /** Text with a soft glow around the letters. */
@@ -907,41 +918,28 @@ public class OverviewScreen extends Screen {
         int zy = (int) Math.round(zyF);
         for (int dx = 0; dx < cw; dx += 8) g.fill(x + dx, zy, x + Math.min(cw, dx + 4), zy + 1, 0xFF3A3358);
 
-        // thin, smooth line: one column at a time, soft top and bottom pixels
-        double prevY = Double.NaN;
+        // sharp line: one column at a time, solid 2 px, connected through drops
+        int prevI = Integer.MIN_VALUE;
         double lastY = zyF;
         for (int px = 0; px < cw; px++) {
             double t = (double) px * (vals.length - 1) / Math.max(1, cw - 1);
             int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
             double v = vals[i0] + (vals[i1] - vals[i0]) * (t - i0);
             double fy = y + (hi - v) / span * (ch - 1);
+            int yy = (int) Math.round(fy);
             int col = v >= 0 ? GREEN : RED;
             int cx0 = x + px;
-
-            // fill: stronger next to the line, fading toward the zero line
-            int top = (int) Math.round(Math.min(fy, zyF)), bot = (int) Math.round(Math.max(fy, zyF));
-            if (bot - top > 1) {
-                int mid = (top + bot) / 2;
-                boolean above = fy < zyF;
-                g.fill(cx0, top, cx0 + 1, mid, alpha(col, above ? 46 : 22));
-                g.fill(cx0, mid, cx0 + 1, bot, alpha(col, above ? 22 : 46));
-            }
-
-            // line: covers from the previous column's height to this one (so drops stay connected), ~1.6 px thick
-            double a = Double.isNaN(prevY) ? fy : prevY;
-            double lo2 = Math.min(a, fy) - 0.8, hi2 = Math.max(a, fy) + 0.8;
-            int core0 = (int) Math.ceil(lo2), core1 = (int) Math.floor(hi2);
-            if (core1 > core0) g.fill(cx0, core0, cx0 + 1, core1, col);
-            float topCover = (float) (core0 - lo2), botCover = (float) (hi2 - core1);
-            if (topCover > 0.05f) g.fill(cx0, core0 - 1, cx0 + 1, core0, alpha(col, (int) (255 * topCover)));
-            if (botCover > 0.05f) g.fill(cx0, core1, cx0 + 1, core1 + 1, alpha(col, (int) (255 * botCover)));
-            prevY = fy;
+            if (yy < zy) g.fill(cx0, yy + 1, cx0 + 1, zy, alpha(col, 38));        // even fill above zero
+            else if (yy > zy) g.fill(cx0, zy + 1, cx0 + 1, yy, alpha(col, 38));   // even fill below zero
+            int a = prevI == Integer.MIN_VALUE ? yy : prevI;
+            g.fill(cx0, Math.min(a, yy), cx0 + 1, Math.max(a, yy) + 2, col);
+            prevI = yy;
             lastY = fy;
         }
         int ex = x + cw - 1, ey = (int) Math.round(lastY);
         int ec = vals[vals.length - 1] >= 0 ? GREEN : RED;
-        round(g, ex - 3, ey - 3, 7, 7, 3, alpha(ec, 90));   // soft halo
         round(g, ex - 2, ey - 2, 5, 5, 2, TEXT);
+        g.fill(ex - 1, ey - 1, ex + 2, ey + 2, ec);
     }
 
     // ================= shared bits for the list pages =================

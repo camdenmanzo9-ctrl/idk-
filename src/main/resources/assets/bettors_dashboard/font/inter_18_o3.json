@@ -1,0 +1,6 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "bettors_dashboard:inter.ttf", "shift": [0, 0], "size": 18.0, "oversample": 3.0 },
+    { "type": "reference", "id": "minecraft:default" }
+  ]
+}
