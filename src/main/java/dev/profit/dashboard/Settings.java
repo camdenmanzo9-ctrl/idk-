@@ -6,6 +6,8 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /** All the options from the Settings screen, saved in config/bettors-settings.json. */
 public final class Settings {
@@ -41,6 +43,46 @@ public final class Settings {
     public int payDim = 55;
     public int payAccent = 0x4DA3FF, payName = 0x8EC5FF, payAmount = 0xFF5555,
             payConfirm = 0x2F7BFF, payCancel = 0xE74C3C, payBg = 0x0C1424;
+
+    // Bet board (the games / limits list on your screen)
+    public boolean boardShow = true;
+    public int boardPos = 4;          // 0 TL, 1 TR, 2 BL, 3 BR, 4 left middle, 5 right middle
+    public float boardSize = 1.0f;
+    public int boardOpacity = 60;
+    public String boardIgn = "2amsnowy";
+    public String boardMax = "2 BILLION MAX";
+    public List<BoardTier> boardTiers = defaultTiers();
+
+    public static class BoardGame {
+        public String icon, name, note;
+        public BoardGame() {}
+        public BoardGame(String icon, String name, String note) { this.icon = icon; this.name = name; this.note = note; }
+    }
+
+    public static class BoardTier {
+        public String min;
+        public List<BoardGame> games = new ArrayList<>();
+        public BoardTier() {}
+        public BoardTier(String min, BoardGame... games) { this.min = min; this.games = new ArrayList<>(List.of(games)); }
+    }
+
+    public static List<BoardTier> defaultTiers() {
+        List<BoardTier> t = new ArrayList<>();
+        t.add(new BoardTier("150M",
+                new BoardGame("cards", "Blackjack Multihand", "Per Hand")));
+        t.add(new BoardTier("100M",
+                new BoardGame("cards", "Blackjack", "Tie = DD"),
+                new BoardGame("roulette", "Russian Roulette", ""),
+                new BoardGame("cards", "Baccarat", "Tie = Loss")));
+        t.add(new BoardTier("50M",
+                new BoardGame("paper", "Paper Game", "Tie = Loss"),
+                new BoardGame("67", "Odd or Even", "Creeper = Loss"),
+                new BoardGame("wheel", "45/45/10", ""),
+                new BoardGame("cards", "MexicanJack", "Tie = DD"),
+                new BoardGame("arrows", "Higher & Lower", "Tie = Loss"),
+                new BoardGame("horse", "Horse game", "x2.5")));
+        return t;
+    }
 
     // ---------------------------------------------------------------------------------
 

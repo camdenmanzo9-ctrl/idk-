@@ -50,6 +50,7 @@ public final class PaymentListener {
             if (incoming) PaymentLedger.record(player, amt, 0);
             else PaymentLedger.record(player, 0, amt);
             Alerts.onPayment(player, amt, incoming);
+            PaymentLedger.adjustBalance(incoming ? amt : -amt);
             if (debug) chat("logged " + (incoming ? player + " paid you " : "you paid " + player + " ") + Money.format(amt), ChatFormatting.GREEN);
         } catch (Exception e) {
             if (debug) chat("couldn't read amount '" + amount + "'", ChatFormatting.RED);

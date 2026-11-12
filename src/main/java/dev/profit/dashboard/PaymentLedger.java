@@ -58,6 +58,10 @@ public final class PaymentLedger {
         List<SessionRecord> history = new ArrayList<>();
         String theme = "classic";
         List<Payment> log = new ArrayList<>();
+        long balance = -1;                                   // last known balance (from /bal + payments)
+        List<long[]> balHist = new ArrayList<>();            // [time, balance]
+        Map<String, Long> playByDay = new LinkedHashMap<>(); // "2026-11-12" -> ms played
+        long playTotal = 0;
     }
 
     private static final long KEEP_MS = 35L * 24 * 60 * 60 * 1000;   // ~a month
@@ -83,6 +87,8 @@ public final class PaymentLedger {
         if (data.session == null) data.session = new LinkedHashMap<>();
         if (data.history == null) data.history = new ArrayList<>();
         if (data.log == null) data.log = new ArrayList<>();
+        if (data.balHist == null) data.balHist = new ArrayList<>();
+        if (data.playByDay == null) data.playByDay = new LinkedHashMap<>();
         if (data.sessionStart <= 0) data.sessionStart = System.currentTimeMillis();
     }
 
@@ -110,6 +116,47 @@ public final class PaymentLedger {
         data.log.removeIf(x -> x.ts < cutoff);
         while (data.log.size() > 20000) data.log.remove(0);
         save();
+    }
+
+    // ---------- balance ----------
+    public static long balance() { return data.balance; }
+
+    public static void setBalance(long v) {
+        data.balance = v;
+        data.balHist.add(new long[]{System.currentTimeMillis(), v});
+        while (data.balHist.size() > 2000) data.balHist.remove(0);
+        save();
+    }
+
+    public static void adjustBalance(long delta) {
+        if (data.balance >= 0) setBalance(data.balance + delta);
+    }
+
+    public static List<long[]> balanceSince(long since) {
+        List<long[]> out = new ArrayList<>();
+        for (long[] b : data.balHist) if (b[0] >= since) out.add(b);
+        return out;
+    }
+
+    // ---------- playtime ----------
+    private static long lastSave = 0;
+
+    public static void addPlaytime(long ms) {
+        String day = java.time.LocalDate.now().toString();
+        data.playByDay.merge(day, ms, Long::sum);
+        data.playTotal += ms;
+        long now = System.currentTimeMillis();
+        if (now - lastSave > 30_000) { lastSave = now; save(); }
+    }
+
+    public static long playTotal() { return data.playTotal; }
+
+    /** Playtime per day for the last n days, oldest first. */
+    public static long[] playLastDays(int n) {
+        long[] out = new long[n];
+        java.time.LocalDate today = java.time.LocalDate.now();
+        for (int i = 0; i < n; i++) out[n - 1 - i] = data.playByDay.getOrDefault(today.minusDays(i).toString(), 0L);
+        return out;
     }
 
     /** All payments since a time, oldest first. */

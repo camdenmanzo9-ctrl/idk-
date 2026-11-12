@@ -21,6 +21,9 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 public class DashboardClient implements ClientModInitializer {
     private static boolean openNextTick = false, openSettingsNextTick = false;
+    private static long balAskedAt = 0, lastTick = 0;
+    private static final java.util.regex.Pattern MONEY_RX =
+            java.util.regex.Pattern.compile("\\$\\s?([\\d,]+(?:\\.\\d+)?\\s?[KkMmBbTt]?)");
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath("bettors_dashboard", "main"));
@@ -36,6 +39,23 @@ public class DashboardClient implements ClientModInitializer {
 
         // Recolor payment messages in chat (only changes how they look on your screen)
         ClientReceiveMessageEvents.MODIFY_GAME.register((message, overlay) -> overlay ? message : Alerts.recolor(message));
+
+        // When you type /bal yourself, read the reply for the Balance card
+        ClientSendMessageEvents.COMMAND.register(command -> {
+            String c = command.trim().toLowerCase();
+            if (c.equals("bal") || c.equals("balance")) balAskedAt = System.currentTimeMillis();
+        });
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (overlay || balAskedAt == 0) return;
+            if (System.currentTimeMillis() - balAskedAt > 5000) { balAskedAt = 0; return; }
+            String text = message.getString();
+            if (PaymentListener.parse(text) != null) return;
+            java.util.regex.Matcher m = MONEY_RX.matcher(text);
+            if (m.find()) {
+                try { PaymentLedger.setBalance(Money.parse(m.group(1))); } catch (Exception ignored) { }
+                balAskedAt = 0;
+            }
+        });
 
         // Big /pay: hold it and ask first. Nothing is sent unless you click Confirm.
         ClientSendMessageEvents.ALLOW_COMMAND.register(command -> {
@@ -68,7 +88,7 @@ public class DashboardClient implements ClientModInitializer {
             }
             if (openNextTick) {
                 openNextTick = false;
-                client.setScreen(new DashboardScreen());
+                client.setScreen(new OverviewScreen());
             }
             if (openSettingsNextTick) {
                 openSettingsNextTick = false;
@@ -79,6 +99,9 @@ public class DashboardClient implements ClientModInitializer {
                 PayConfirmScreen.pending = null;
             }
             Alerts.tick();
+            long now = System.currentTimeMillis();
+            if (client.player != null && lastTick > 0) PaymentLedger.addPlaytime(Math.min(1000, now - lastTick));
+            lastTick = now;
         });
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> dispatcher.register(
