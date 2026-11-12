@@ -647,11 +647,7 @@ public class OverviewScreen extends Screen {
     private void drawHeader(GuiGraphicsExtractor g, int mx, int my) {
         int hy = fy + 10;
         int lx = fx + 10;
-        g.fill(lx + 1, hy - 1, lx + 7, hy, PURPLE);
-        g.fill(lx + 1, hy + 8, lx + 7, hy + 9, PURPLE);
-        g.fill(lx, hy, lx + 1, hy + 8, PURPLE);
-        g.fill(lx + 7, hy, lx + 8, hy + 8, PURPLE);
-        g.fill(lx + 3, hy + 3, lx + 5, hy + 5, PURPLE_LIGHT);
+        donut(g, lx + 4, hy + 4);
         int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
         text(g, "v1.0", x, hy + 2, DIM, 0.74f, false);
         x += w("v1.0", 0.74f) + 10;
@@ -676,6 +672,29 @@ public class OverviewScreen extends Screen {
         }
         if (headerSettings != null) gear(g, headerSettings, mx, my);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
+    }
+
+    /** Little pixel donut logo: golden dough, pink frosting, sprinkles, a hole in the middle. */
+    private static void donut(GuiGraphicsExtractor g, int cx, int cy) {
+        final int DOUGH = 0xFFD99A4E, DOUGH_DARK = 0xFFB0763A, FROST = 0xFFF472B6, FROST_LIGHT = 0xFFF9A8D4;
+        double R = 5.6, HOLE = 1.9;
+        for (int dy = -6; dy <= 6; dy++) {
+            for (int dx = -6; dx <= 6; dx++) {
+                double d = Math.sqrt((dx + 0.5) * (dx + 0.5) + (dy + 0.5) * (dy + 0.5));
+                if (d > R || d < HOLE) continue;
+                int col;
+                boolean frosting = d < R - 1.2 && (dy < 1 || (dy == 1 && (dx + 7) % 3 != 0));   // frosting with little drips
+                if (frosting) col = (dx < -1 && dy < -1) ? FROST_LIGHT : FROST;
+                else col = dy > 2 ? DOUGH_DARK : DOUGH;
+                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, col);
+            }
+        }
+        // sprinkles on the frosting
+        g.fill(cx - 3, cy - 4, cx - 2, cy - 3, 0xFFFFFFFF);
+        g.fill(cx + 2, cy - 4, cx + 3, cy - 3, 0xFFFDE047);
+        g.fill(cx + 3, cy - 1, cx + 4, cy, 0xFF60A5FA);
+        g.fill(cx - 4, cy - 1, cx - 3, cy, 0xFF4ADE80);
+        g.fill(cx, cy - 5, cx + 1, cy - 4, 0xFF60A5FA);
     }
 
     /** Settings gear button. */
@@ -841,24 +860,46 @@ public class OverviewScreen extends Screen {
         for (long v : vals) { min = Math.min(min, v); max = Math.max(max, v); }
         long pad = Math.max(1, (max - min) / 12);
         final long hi = max + pad, lo = min - pad;
-        int zy = y + (int) Math.round((double) hi / (hi - lo) * (ch - 1));
+        final double span = (double) (hi - lo);
+        double zyF = y + (double) hi / span * (ch - 1);
+        int zy = (int) Math.round(zyF);
         for (int dx = 0; dx < cw; dx += 8) g.fill(x + dx, zy, x + Math.min(cw, dx + 4), zy + 1, 0xFF3A3358);
-        int last = -1, lastX = x;
-        for (int px = 0; px < cw; px += 2) {
+
+        // thin, smooth line: one column at a time, soft top and bottom pixels
+        double prevY = Double.NaN;
+        double lastY = zyF;
+        for (int px = 0; px < cw; px++) {
             double t = (double) px * (vals.length - 1) / Math.max(1, cw - 1);
             int i0 = (int) t, i1 = Math.min(vals.length - 1, i0 + 1);
             double v = vals[i0] + (vals[i1] - vals[i0]) * (t - i0);
-            int yy = y + (int) Math.round((hi - v) / (double) (hi - lo) * (ch - 1));
+            double fy = y + (hi - v) / span * (ch - 1);
             int col = v >= 0 ? GREEN : RED;
-            g.fill(x + px, Math.min(yy, zy), x + px + 2, Math.max(yy, zy), alpha(col, 44));
-            int from = last < 0 ? yy : last;
-            g.fill(x + px, Math.min(yy, from), x + px + 2, Math.max(yy, from) + 1, col);
-            last = yy;
-            lastX = x + px;
+            int cx0 = x + px;
+
+            // fill: stronger next to the line, fading toward the zero line
+            int top = (int) Math.round(Math.min(fy, zyF)), bot = (int) Math.round(Math.max(fy, zyF));
+            if (bot - top > 1) {
+                int mid = (top + bot) / 2;
+                boolean above = fy < zyF;
+                g.fill(cx0, top, cx0 + 1, mid, alpha(col, above ? 46 : 22));
+                g.fill(cx0, mid, cx0 + 1, bot, alpha(col, above ? 22 : 46));
+            }
+
+            // line: covers from the previous column's height to this one (so drops stay connected), ~1.6 px thick
+            double a = Double.isNaN(prevY) ? fy : prevY;
+            double lo2 = Math.min(a, fy) - 0.8, hi2 = Math.max(a, fy) + 0.8;
+            int core0 = (int) Math.ceil(lo2), core1 = (int) Math.floor(hi2);
+            if (core1 > core0) g.fill(cx0, core0, cx0 + 1, core1, col);
+            float topCover = (float) (core0 - lo2), botCover = (float) (hi2 - core1);
+            if (topCover > 0.05f) g.fill(cx0, core0 - 1, cx0 + 1, core0, alpha(col, (int) (255 * topCover)));
+            if (botCover > 0.05f) g.fill(cx0, core1, cx0 + 1, core1 + 1, alpha(col, (int) (255 * botCover)));
+            prevY = fy;
+            lastY = fy;
         }
+        int ex = x + cw - 1, ey = (int) Math.round(lastY);
         int ec = vals[vals.length - 1] >= 0 ? GREEN : RED;
-        g.fill(lastX - 1, last - 1, lastX + 2, last + 2, TEXT);
-        g.fill(lastX, last, lastX + 1, last + 1, ec);
+        round(g, ex - 3, ey - 3, 7, 7, 3, alpha(ec, 90));   // soft halo
+        round(g, ex - 2, ey - 2, 5, 5, 2, TEXT);
     }
 
     // ================= shared bits for the list pages =================
