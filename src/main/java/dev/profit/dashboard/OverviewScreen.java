@@ -2,7 +2,9 @@ package dev.profit.dashboard;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FontDescription;
@@ -39,10 +41,13 @@ public class OverviewScreen extends Screen {
     private final List<Button> tabButtons = new ArrayList<>();
     private final List<Button> filterButtons = new ArrayList<>();
     private Button settingsButton, sessionButton;
+    private EditBox searchBox;
+    private static String search = "";
     private final List<Button> panelButtons = new ArrayList<>();
     private long confirmUntil = 0;
+    private static int scroll = 0;
 
-    private int fx, fy, fw, fh;
+    private int fx, fy, fw, fh, escX;
 
     public OverviewScreen() {
         super(Component.literal("Snowy's Dashboard"));
@@ -101,10 +106,17 @@ public class OverviewScreen extends Screen {
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         int k = event.key();
+        if (searchBox != null && searchBox.isFocused() && k != GLFW.GLFW_KEY_ESCAPE) return super.keyPressed(event);
         if (k >= GLFW.GLFW_KEY_1 && k <= GLFW.GLFW_KEY_4) { range = k - GLFW.GLFW_KEY_1; return true; }
         if (k == GLFW.GLFW_KEY_SPACE) { togglePause(); return true; }
-        if (k == GLFW.GLFW_KEY_TAB) { tab = (tab + 1) % TAB_LABELS.length; rebuildWidgets(); return true; }
+        if (k == GLFW.GLFW_KEY_TAB) { tab = (tab + 1) % TAB_LABELS.length; scroll = 0; rebuildWidgets(); return true; }
         return super.keyPressed(event);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        scroll = Math.max(0, scroll - (int) Math.signum(scrollY) * 3);
+        return true;
     }
 
     // ---------------- layout ----------------
@@ -134,11 +146,9 @@ public class OverviewScreen extends Screen {
             rangeButtons.add(0, btn(RANGE_LABELS[i], bx - bw, fy + 8, bw, () -> range = r));
             bx -= bw + 3;
         }
-        // small settings link left of the ranges
-        int sw = small("SETTINGS");
-        settingsButton = btn("SETTINGS", bx - 8 - sw, fy + 8, sw, () -> {
-            if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
-        });
+        escX = bx - 10;   // "ESC close" is drawn here
+        settingsButton = null;
+        searchBox = null;
 
         // center: tabs
         int tabsW = 0;
@@ -147,7 +157,7 @@ public class OverviewScreen extends Screen {
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int t = i;
             int bw = small(TAB_LABELS[i]);
-            tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; rebuildWidgets(); }));
+            tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; rebuildWidgets(); }));
             tx += bw + 4;
         }
 
@@ -165,8 +175,21 @@ public class OverviewScreen extends Screen {
                 filterButtons.add(0, btn(f[i], px - pw, feed[1] + 6, pw, () -> filter = idx));
                 px -= pw + 3;
             }
+        } else if (tab == 1) {
+            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 26;
+            searchBox = new EditBox(font, sbx + 18, sby + 8, sbw - 24, 12, Component.literal("Search"));
+            searchBox.setBordered(false);
+            searchBox.setMaxLength(32);
+            searchBox.setValue(search);
+            searchBox.setHint(Component.literal("Search players"));
+            searchBox.setResponder(v -> { search = v; scroll = 0; });
+            addRenderableWidget(searchBox);
         } else if (tab == 4) {
             Panels.load();
+            int sbw = small("OPEN SETTINGS") + 10;
+            settingsButton = btn("OPEN SETTINGS", fx + fw - 10 - sbw, contentY() + 2, sbw, () -> {
+                if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
+            });
             int y = contentY() + 30, rowH = 44, x = fx + 10, rw = fw - 20;
             for (int i = 0; i < 3; i++) {
                 final int idx = i;
@@ -333,12 +356,12 @@ public class OverviewScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         g.fill(0, 0, width, height, BG);
+        box(g, fx, fy, fw, fh, FRAME, BORDER);
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
-        box(g, fx, fy, fw, fh, FRAME, BORDER);
         drawHeader(g, mouseX, mouseY);
         switch (tab) {
             case 0 -> drawOverview(g, mouseX, mouseY);
@@ -361,8 +384,8 @@ public class OverviewScreen extends Screen {
         g.fill(lx + 7, hy, lx + 8, hy + 8, PURPLE);
         g.fill(lx + 3, hy + 3, lx + 5, hy + 5, PURPLE_LIGHT);
         int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
-        text(g, "1.0", x, hy + 2, DIM, 0.65f, false);
-        x += w("1.0", 0.65f) + 10;
+        text(g, "v1.0", x, hy + 2, DIM, 0.65f, false);
+        x += w("v1.0", 0.65f) + 10;
         // DATA LIVE badge
         String live = paused ? "PAUSED" : "DATA LIVE";
         int bw = capsW(live) + 16;
@@ -372,12 +395,7 @@ public class OverviewScreen extends Screen {
 
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
-        {
-            Button b = settingsButton;
-            boolean hover = over(b, mx, my);
-            String s = "SETTINGS";
-            text(g, s, b.getX() + (b.getWidth() - wb(s, 0.7f)) / 2, b.getY() + 3, hover ? TEXT : DIM, 0.7f, true);
-        }
+        text(g, "ESC close", escX - w("ESC close", 0.62f), fy + 11, DIM, 0.62f, false);
         g.fill(fx + 1, fy + 26, fx + fw - 1, fy + 27, BORDER);
     }
 
@@ -386,7 +404,12 @@ public class OverviewScreen extends Screen {
         String me = minecraft != null ? minecraft.getUser().getName() : "you";
         int wy = welcomeY();
         glow(g, fx + 60, wy + 20, 120, 30, PURPLE, 40);
-        face(g, me, fx + 16, wy + 4, 34);
+        if (minecraft != null && minecraft.player != null && Settings.S.skinFaces) {
+            InventoryScreen.extractEntityInInventoryFollowsMouse(g, fx + 12, wy - 8, fx + 52, wy + 46, 22, 0.0625f,
+                    mouseX, mouseY, minecraft.player);
+        } else {
+            face(g, me, fx + 16, wy + 4, 34);
+        }
         int nx = fx + 60;
         text(g, "Welcome, ", nx, wy + 9, TEXT, 1.6f, true);
         text(g, me, nx + wb("Welcome, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f, true);
@@ -436,7 +459,7 @@ public class OverviewScreen extends Screen {
 
         String since0 = pays.isEmpty() ? "no payments yet" : "since " + day(pays.get(0).ts);
         int pc = net >= 0 ? GREEN : RED;
-        card(g, c3, cy, cw, ch, "TO PROFIT", signedMoney(net), since0, pc, pc, MUTED, netSeries);
+        card(g, c3, cy, cw, ch, RANGE_LABELS[range] + " PROFIT", signedMoney(net), since0, pc, pc, MUTED, netSeries);
 
         // feed
         int[] fb = feedBox();
@@ -450,8 +473,10 @@ public class OverviewScreen extends Screen {
             if (filter == 0 || (filter == 1 && in) || (filter == 2 && !in)) feed.add(p);
         }
         int rowH = 17, ry = fb[1] + 24, rows = Math.max(0, (fb[1] + fb[3] - 4 - ry) / rowH);
-        for (int i = 0; i < Math.min(rows, feed.size()); i++) {
-            PaymentLedger.Payment p = feed.get(i);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, feed.size() - rows)));
+        scrollbar(g, fb[0] + fb[2] - 5, ry - 2, fb[1] + fb[3] - 4 - ry, rows, feed.size());
+        for (int i = 0; i < Math.min(rows, feed.size() - scroll); i++) {
+            PaymentLedger.Payment p = feed.get(scroll + i);
             boolean in = p.paidYou > 0;
             int y = ry + i * rowH;
             if (i % 2 == 0) g.fill(fb[0] + 4, y - 2, fb[0] + fb[2] - 4, y + rowH - 3, 0xFF161323);
@@ -470,7 +495,8 @@ public class OverviewScreen extends Screen {
         box(g, cb[0], cb[1], cb[2], cb[3], PANEL, BORDER);
         glow(g, cb[0] + cb[2] * 3 / 4, cb[1] + cb[3] / 3, cb[2] / 4, cb[3] / 3, pc, 30);
         int capW = caps(g, "PROFIT / LOSS", cb[0] + 8, cb[1] + 9, TEXT);
-        text(g, RANGE_LABELS[range].toLowerCase(Locale.US) + " of data", cb[0] + 14 + capW, cb[1] + 9, DIM, 0.62f, false);
+        long spanDays = pays.isEmpty() ? 0 : Math.max(1, (now() - pays.get(0).ts + DAY - 1) / DAY);
+        text(g, spanDays + (spanDays == 1 ? " day of data" : " days of data"), cb[0] + 14 + capW, cb[1] + 9, DIM, 0.62f, false);
         String big = signedMoney(net);
         text(g, big, cb[0] + cb[2] - 8 - wb(big, 1.4f), cb[1] + 6, pc, 1.4f, true);
         chart(g, netSeries, cb[0] + 8, cb[1] + 26, cb[2] - 16, cb[3] - 34);
@@ -523,114 +549,146 @@ public class OverviewScreen extends Screen {
         g.fill(lastX, last, lastX + 1, last + 1, ec);
     }
 
+    // ================= shared bits for the list pages =================
+    private static final int PINK = 0xFFF472B6;
+
+    private int pageTitle(GuiGraphicsExtractor g, String title, String sub) {
+        int x = fx + 10, y = contentY();
+        text(g, title, x, y, TEXT, 1.4f, true);
+        text(g, sub, x, y + 15, MUTED, 0.62f, false);
+        return y + 26;
+    }
+
+    /** Little stat box like "PLAYERS 175". Returns its width. */
+    private int chip(GuiGraphicsExtractor g, int x, int y, String label, String value, int valueColor) {
+        int cw = Math.max(capsW(label), wb(value, 0.85f)) + 16;
+        box(g, x, y, cw, 26, PANEL, BORDER);
+        caps(g, label, x + 8, y + 5, DIM);
+        text(g, value, x + 8, y + 14, valueColor, 0.85f, true);
+        return cw;
+    }
+
+    private void scrollbar(GuiGraphicsExtractor g, int x, int y, int h, int visible, int total) {
+        if (total <= visible) return;
+        g.fill(x, y, x + 2, y + h, 0xFF1C1830);
+        int bh = Math.max(12, h * visible / total);
+        int by = y + (h - bh) * scroll / Math.max(1, total - visible);
+        g.fill(x, by, x + 2, by + bh, 0xFF5F5B75);
+    }
+
     // ================= WIN / LOSS =================
     private void drawWinLoss(GuiGraphicsExtractor g) {
-        List<PaymentLedger.Payment> pays = rangePayments();
-        Map<String, long[]> per = perPlayer(pays);
-        List<Map.Entry<String, long[]>> won = new ArrayList<>(), lost = new ArrayList<>();
-        long wonSum = 0, lostSum = 0;
-        for (var e : per.entrySet()) {
-            if (e.getValue()[0] > 0) { won.add(e); wonSum += e.getValue()[0]; }
-            else if (e.getValue()[0] < 0) { lost.add(e); lostSum -= e.getValue()[0]; }
+        List<PaymentLedger.Entry> all = new ArrayList<>();   // everyone, all time
+        String q = search.trim().toLowerCase(Locale.US);
+        for (PaymentLedger.Entry e : PaymentLedger.entries(false))
+            if (q.isEmpty() || e.name.toLowerCase(Locale.US).contains(q)) all.add(e);
+        all.sort(Comparator.comparingLong(PaymentLedger.Entry::net).reversed());   // won most off you first
+        int up = 0, down = 0;
+        long upSum = 0, downSum = 0;
+        for (PaymentLedger.Entry e : all) {
+            long n = e.net();
+            if (n > 0) { up++; upSum += n; } else if (n < 0) { down++; downSum -= n; }
         }
-        won.sort(Comparator.comparingLong((Map.Entry<String, long[]> e) -> e.getValue()[0]).reversed());
-        lost.sort(Comparator.comparingLong(e -> e.getValue()[0]));
-        int players = won.size() + lost.size();
-        int rate = players == 0 ? 0 : Math.round(won.size() * 100f / players);
 
-        int y = contentY(), ch = 54, gap = 8, cw = (fw - 20 - gap * 2) / 3;
-        int c1 = fx + 10, c2 = c1 + cw + gap, c3 = c2 + cw + gap;
-        statCard(g, c1, y, cw, ch, "YOU WON", "+" + Money.format(wonSum), "from " + won.size() + " players " + rangeWord(), GREEN);
-        statCard(g, c2, y, cw, ch, "YOU LOST", "-" + Money.format(lostSum), "to " + lost.size() + " players " + rangeWord(), RED);
-        long net = wonSum - lostSum;
-        statCard(g, c3, y, cw, ch, "WIN RATE", rate + "%", "net " + signedMoney(net), PURPLE);
+        int y = pageTitle(g, "Win / Loss",
+                "Everyone who has gambled with you. Top = won the most off you, bottom = lost the most.");
+        int x = fx + 10;
+        x += chip(g, x, y, "PLAYERS", String.valueOf(all.size()), TEXT) + 6;
+        x += chip(g, x, y, "UP ON YOU", up + "  +" + Money.format(upSum), GREEN) + 6;
+        chip(g, x, y, "DOWN ON YOU", down + "  -" + Money.format(downSum), RED);
+        if (searchBox != null) {
+            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = y;
+            int bc = searchBox.isFocused() ? PURPLE : 0xFF4A3F7A;
+            g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
+            g.fill(sbx, sby + 25, sbx + sbw, sby + 26, bc);
+            g.fill(sbx, sby, sbx + 1, sby + 26, bc);
+            g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 26, bc);
+            // magnifier
+            int mx0 = sbx + 7, my0 = sby + 8;
+            g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, MUTED);
+            g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, MUTED);
+            g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, MUTED);
+            g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, MUTED);
+            g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, MUTED);
+            g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, MUTED);
+        }
 
-        int py = y + ch + 8, ph = contentBottom() - py, pw = (fw - 28) / 2;
-        playerList(g, "YOU WON FROM", won, fx + 10, py, pw, ph, GREEN, wonSum);
-        playerList(g, "YOU LOST TO", lost, fx + 18 + pw, py, pw, ph, RED, lostSum);
-    }
+        int py = y + 34, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
+        box(g, px, py, pw, ph, PANEL, BORDER);
+        int cNum = px + 10, cName = px + 28, cBets = px + pw * 48 / 100, cWag = px + pw * 62 / 100, cNet = px + pw - 14;
+        int hy = py + 8;
+        caps(g, "#", cNum, hy, DIM);
+        caps(g, "PLAYER", cName + 14, hy, DIM);
+        caps(g, "BETS", cBets, hy, DIM);
+        caps(g, "WAGERED", cWag, hy, DIM);
+        caps(g, "NET (THEIR SIDE)", cNet - capsW("NET (THEIR SIDE)"), hy, DIM);
+        g.fill(px + 1, hy + 10, px + pw - 1, hy + 11, BORDER);
 
-    private void statCard(GuiGraphicsExtractor g, int x, int y, int cw, int ch, String label, String value, String sub, int color) {
-        box(g, x, y, cw, ch, PANEL, BORDER);
-        glow(g, x + cw * 3 / 4, y + ch / 2, cw / 3, ch / 2, color, 36);
-        g.fill(x, y, x + cw, y + 1, color);
-        caps(g, label, x + 8, y + 7, MUTED);
-        text(g, value, x + 8, y + 18, color, 1.6f, true);
-        text(g, sub, x + 8, y + 37, MUTED, 0.62f, false);
-    }
-
-    private void playerList(GuiGraphicsExtractor g, String title, List<Map.Entry<String, long[]>> list,
-                            int x, int y, int lw, int lh, int color, long total) {
-        box(g, x, y, lw, lh, PANEL, BORDER);
-        caps(g, title, x + 8, y + 9, color);
-        int rowH = 17, ry = y + 26, rows = Math.max(0, (y + lh - 4 - ry) / rowH);
-        long max = 1;
-        for (var e : list) max = Math.max(max, Math.abs(e.getValue()[0]));
-        for (int i = 0; i < Math.min(rows, list.size()); i++) {
-            var e = list.get(i);
-            long v = Math.abs(e.getValue()[0]);
+        int rowH = 16, ry = hy + 15, visible = Math.max(1, (py + ph - 4 - ry) / rowH);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, all.size() - visible)));
+        for (int i = 0; i < visible && scroll + i < all.size(); i++) {
+            int idx = scroll + i;
+            PaymentLedger.Entry e = all.get(idx);
             int ty = ry + i * rowH;
-            if (i % 2 == 0) g.fill(x + 4, ty - 2, x + lw - 4, ty + rowH - 3, 0xFF161323);
-            face(g, e.getKey(), x + 8, ty, 11);
-            text(g, e.getKey(), x + 24, ty - 1, TEXT, 0.85f, true);
-            text(g, e.getValue()[3] + (e.getValue()[3] == 1 ? " payment" : " payments"), x + 24, ty + 7, DIM, 0.62f, false);
-            String amt = Money.format(v);
-            int ax = x + lw - 8 - wb(amt, 0.85f);
-            text(g, amt, ax, ty + 2, color, 0.85f, true);
-            int barX = x + lw / 2, barW = Math.max(1, (int) ((ax - 10 - barX) * (v / (double) max)));
-            g.fill(barX, ty + 4, ax - 10, ty + 7, 0xFF1C1830);
-            g.fill(barX, ty + 4, barX + barW, ty + 7, color);
+            if (i % 2 == 0) g.fill(px + 4, ty - 3, px + pw - 8, ty + rowH - 3, 0xFF161323);
+            text(g, String.valueOf(idx + 1), cNum, ty + 1, DIM, 0.7f, false);
+            face(g, e.name, cName, ty - 1, 10);
+            text(g, e.name, cName + 14, ty, TEXT, 0.8f, true);
+            text(g, String.valueOf(e.payments), cBets, ty + 1, MUTED, 0.75f, false);
+            text(g, Money.format(e.paidYou), cWag, ty + 1, MUTED, 0.75f, false);
+            long n = e.net();
+            String v = signedMoney(n);
+            text(g, v, cNet - wb(v, 0.8f), ty, n > 0 ? GREEN : n < 0 ? RED : MUTED, 0.8f, true);
         }
-        if (list.isEmpty()) text(g, "Nobody in this range", x + 8, ry + 2, DIM, 0.85f, false);
+        if (all.isEmpty()) text(g, "No players yet", cName, ry, DIM, 0.85f, false);
+        scrollbar(g, px + pw - 5, ry - 3, py + ph - ry, visible, all.size());
     }
 
     // ================= RAKEBACK =================
     private void drawRakeback(GuiGraphicsExtractor g) {
         Settings st = Settings.S;
-        Map<String, long[]> per = perPlayer(rangePayments());
-        List<Map.Entry<String, long[]>> losers = new ArrayList<>();
-        long owedTotal = 0;
-        int over = 0;
-        for (var e : per.entrySet()) {
-            long lostAmt = e.getValue()[0];   // + = they lost to you
-            if (lostAmt > 0) {
+        List<PaymentLedger.Entry> losers = new ArrayList<>();
+        int ready = 0;
+        long owe = 0;
+        for (PaymentLedger.Entry e : PaymentLedger.entries(false)) {   // everyone, all time
+            long lost = -e.net();   // what they lost to you
+            if (lost > 0) {
                 losers.add(e);
-                if (lostAmt >= st.rakeMin) { over++; owedTotal += lostAmt * st.rakePct / 100; }
+                if (lost >= st.rakeMin) { ready++; owe += lost * st.rakePct / 100; }
             }
         }
-        losers.sort(Comparator.comparingLong((Map.Entry<String, long[]> e) -> e.getValue()[0]).reversed());
+        losers.sort(Comparator.comparingLong(PaymentLedger.Entry::net));   // closest to (or over) the target first
 
-        int y = contentY(), ch = 54, gap = 8, cw = (fw - 20 - gap * 2) / 3;
-        int c1 = fx + 10, c2 = c1 + cw + gap, c3 = c2 + cw + gap;
-        statCard(g, c1, y, cw, ch, "RAKEBACK OWED", Money.format(owedTotal), st.rakePct + "% of losses " + rangeWord(), GOLD);
-        statCard(g, c2, y, cw, ch, "PLAYERS OVER " + Money.format(st.rakeMin).toUpperCase(Locale.US), String.valueOf(over),
-                "qualify for rakeback", PURPLE);
-        String closest = "-";
-        for (var e : losers) if (e.getValue()[0] < st.rakeMin) { closest = e.getKey(); break; }
-        statCard(g, c3, y, cw, ch, "CLOSEST NEXT", closest, "nearest to " + Money.format(st.rakeMin), BLUE);
+        int y = pageTitle(g, "Rakeback", st.rakePct + "% back once a player has lost " + Money.format(st.rakeMin)
+                + ". Everyone, closest to " + Money.format(st.rakeMin) + " first.");
+        int x = fx + 10;
+        x += chip(g, x, y, "PLAYERS", String.valueOf(losers.size()), TEXT) + 6;
+        x += chip(g, x, y, "READY", String.valueOf(ready), GREEN) + 6;
+        chip(g, x, y, "YOU OWE", Money.format(owe), TEXT);
 
-        int py = y + ch + 8, ph = contentBottom() - py, pw = fw - 20;
-        box(g, fx + 10, py, pw, ph, PANEL, BORDER);
-        caps(g, "RAKEBACK", fx + 18, py + 9, TEXT);
-        text(g, st.rakePct + "% back once a player has lost " + Money.format(st.rakeMin), fx + 24 + capsW("RAKEBACK"), py + 9, DIM, 0.62f, false);
-        int rowH = 17, ry = py + 26, rows = Math.max(0, (py + ph - 4 - ry) / rowH);
-        for (int i = 0; i < Math.min(rows, losers.size()); i++) {
-            var e = losers.get(i);
-            long lostAmt = e.getValue()[0];
-            boolean owed = lostAmt >= st.rakeMin;
-            int ty = ry + i * rowH, x = fx + 10;
-            if (i % 2 == 0) g.fill(x + 4, ty - 2, x + pw - 4, ty + rowH - 3, 0xFF161323);
-            face(g, e.getKey(), x + 8, ty, 11);
-            text(g, e.getKey(), x + 24, ty - 1, TEXT, 0.85f, true);
-            text(g, "lost " + Money.format(lostAmt) + " / " + Money.format(st.rakeMin), x + 24, ty + 7, DIM, 0.62f, false);
-            String right = owed ? "owed " + Money.format(lostAmt * st.rakePct / 100) : Money.format(st.rakeMin - lostAmt) + " to go";
-            int rx = x + pw - 8 - wb(right, 0.85f);
-            text(g, right, rx, ty + 2, owed ? GREEN : MUTED, 0.85f, true);
-            int barX = x + pw * 35 / 100, barEnd = rx - 12;
-            g.fill(barX, ty + 4, barEnd, ty + 7, 0xFF1C1830);
-            g.fill(barX, ty + 4, barX + (int) ((barEnd - barX) * Math.min(1.0, lostAmt / (double) st.rakeMin)), ty + 7, owed ? GREEN : PURPLE);
+        int py = y + 34, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
+        box(g, px, py, pw, ph, PANEL, BORDER);
+        int rowH = 22, ry = py + 8, visible = Math.max(1, (py + ph - 4 - ry) / rowH);
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, losers.size() - visible)));
+        for (int i = 0; i < visible && scroll + i < losers.size(); i++) {
+            int idx = scroll + i;
+            PaymentLedger.Entry e = losers.get(idx);
+            long lost = -e.net();
+            boolean isReady = lost >= st.rakeMin;
+            int ty = ry + i * rowH, rx = px + 6, rw = pw - 18;
+            box(g, rx, ty, rw, rowH - 3, 0xFF15121F, 0xFF1C1830);
+            text(g, String.valueOf(idx + 1), rx + 8, ty + 4, DIM, 0.7f, false);
+            text(g, e.name, rx + 26, ty + 3, TEXT, 0.8f, true);
+            String right = isReady ? "READY  owe " + Money.format(lost * st.rakePct / 100)
+                    : Money.format(lost) + " / " + Money.format(st.rakeMin);
+            text(g, right, rx + rw - 8 - wb(right, 0.8f), ty + 3, isReady ? GREEN : TEXT, 0.8f, true);
+            int bx = rx + 26, be = rx + rw - 8, by = ty + rowH - 8;
+            g.fill(bx, by, be, by + 2, 0xFF2A2640);
+            int fill = (int) ((be - bx) * Math.min(1.0, lost / (double) st.rakeMin));
+            if (fill > 0) g.fill(bx, by, bx + fill, by + 2, isReady ? GREEN : PINK);
         }
-        if (losers.isEmpty()) text(g, "No players have lost to you in this range", fx + 18, ry + 2, DIM, 0.85f, false);
+        if (losers.isEmpty()) text(g, "Nobody has lost to you yet", px + 10, ry + 4, DIM, 0.85f, false);
+        scrollbar(g, px + pw - 6, ry, py + ph - 8 - ry, visible, losers.size());
     }
 
     // ================= SESSIONS =================
@@ -722,6 +780,7 @@ public class OverviewScreen extends Screen {
             String st = on[i] ? "ON" : "OFF";
             text(g, st, sx - 8 - wb(st, 0.75f), sy + 3, on[i] ? colors[i] : DIM, 0.75f, true);
         }
+        if (settingsButton != null) pill(g, settingsButton, false, mouseX, mouseY);
         int ny = panelButtons.isEmpty() ? y + 40 : panelButtons.get(panelButtons.size() - 1).getY() + 56;
         text(g, "These switches control the Balance HUD mod, so it needs its latest update installed too.",
                 x, ny, DIM, 0.62f, false);
