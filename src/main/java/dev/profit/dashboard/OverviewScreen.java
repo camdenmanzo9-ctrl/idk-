@@ -23,7 +23,7 @@ import java.util.Map;
 public class OverviewScreen extends Screen {
     // ---------------- theme ----------------
     private static final int BG = 0xFF060509, FRAME = 0xFF0D0B15, PANEL = 0xFF12101C, BORDER = 0xFF221E33,
-            TEXT = 0xFFF2F0FA, MUTED = 0xFF8C88A3, DIM = 0xFF5F5B75, PURPLE = 0xFF8B5CF6, PURPLE_LIGHT = 0xFFB794F6,
+            TEXT = 0xFFF2F0FA, MUTED = 0xFFADA9C4, DIM = 0xFF8A86A3, PURPLE = 0xFF8B5CF6, PURPLE_LIGHT = 0xFFB794F6,
             GOLD = 0xFFE0B24A, BLUE = 0xFF7B8CFF, RED = 0xFFFF5A6E, GREEN = 0xFF4ADE80, AMBER = 0xFFE0A030;
 
     private static final long DAY = 24L * 60 * 60 * 1000;
@@ -602,10 +602,10 @@ public class OverviewScreen extends Screen {
 
     /** Little stat box like "PLAYERS 175". Returns its width. */
     private int chip(GuiGraphicsExtractor g, int x, int y, String label, String value, int valueColor) {
-        int cw = Math.max(capsW(label), wb(value, 0.85f)) + 16;
+        int cw = Math.max(capsW(label), wb(value, 0.95f)) + 18;
         box(g, x, y, cw, 26, PANEL, BORDER);
-        caps(g, label, x + 8, y + 5, DIM);
-        text(g, value, x + 8, y + 14, valueColor, 0.85f, true);
+        caps(g, label, x + 9, y + 5, MUTED);
+        text(g, value, x + 9, y + 14, valueColor, 0.95f, true);
         return cw;
     }
 
@@ -673,22 +673,7 @@ public class OverviewScreen extends Screen {
         x += chip(g, x, y, "PLAYERS", String.valueOf(all.size()), TEXT) + 6;
         x += chip(g, x, y, "UP ON YOU", up + "  +" + Money.format(upSum), GREEN) + 6;
         chip(g, x, y, "DOWN ON YOU", down + "  -" + Money.format(downSum), RED);
-        if (searchBox != null) {
-            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = y;
-            int bc = searchBox.isFocused() ? PURPLE : 0xFF4A3F7A;
-            g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
-            g.fill(sbx, sby + 25, sbx + sbw, sby + 26, bc);
-            g.fill(sbx, sby, sbx + 1, sby + 26, bc);
-            g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 26, bc);
-            // magnifier
-            int mx0 = sbx + 7, my0 = sby + 8;
-            g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, MUTED);
-            g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, MUTED);
-            g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, MUTED);
-            g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, MUTED);
-            g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, MUTED);
-            g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, MUTED);
-        }
+        drawSearchFrame(g, y);
 
         int py = y + 34, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
         box(g, px, py, pw, ph, PANEL, BORDER);
