@@ -49,6 +49,22 @@ public final class Fonts {
         g.pose().popMatrix();
     }
 
+    /** Height of a capital letter (like "U") when drawn at this scale. */
+    public static float capHeight(float scale) {
+        int i = pick(scale);
+        return 0.73f * SIZES[i] * (8f * scale / SIZES[i]);
+    }
+
+    /**
+     * Where the top of a capital letter lands, measured down from the y you draw at.
+     * Minecraft anchors fonts at their baseline, so big text sits higher than small text.
+     */
+    public static float capTop(float scale) {
+        int i = pick(scale);
+        float rest = 8f * scale / SIZES[i];
+        return (7.5f - 0.73f * SIZES[i]) * rest;
+    }
+
     public static int width(Font f, String s, float scale, boolean bold) {
         int i = pick(scale);
         float rest = 8f * scale / SIZES[i];

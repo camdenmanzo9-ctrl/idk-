@@ -50,6 +50,7 @@ public class OverviewScreen extends Screen {
 
     private int fx, fy, fw, fh, escX;
     private boolean showEsc = true;
+    private float tabScale = 0.76f;
 
     public OverviewScreen() {
         super(Component.literal("Snowy's Dashboard"));
@@ -166,23 +167,29 @@ public class OverviewScreen extends Screen {
         itemSearch = null;
         auctionButtons.clear();
 
-        // tabs: centered in the space between the left badge and the right-side buttons
-        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.74f) + 10 + capsW("DATA LIVE") + 16 + 10;
-        int rightStart = escX - w("ESC close", 0.72f) - 8;
-        int gap = 3, pad = 12, tabsW = 0;
-        for (String t : TAB_LABELS) tabsW += w(t, 0.75f) + pad + gap;
-        if (tabsW > rightStart - leftEnd) {               // tight screen: slimmer tabs, drop the "ESC close" hint
-            pad = 8; gap = 2; tabsW = 0;
-            for (String t : TAB_LABELS) tabsW += w(t, 0.75f) + pad + gap;
-            showEsc = false;
-            rightStart = headerSettings.getX() - 6;
-        } else {
-            showEsc = true;
+        // tabs: measured in bold (how they're drawn), shrunk if needed so nothing is ever cut off
+        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.65f) + 10 + capsW("DATA LIVE") + 20 + 10;
+        int rightStart = escX - w("ESC close", 0.62f) - 8;
+        showEsc = true;
+        float[] scales = {0.76f, 0.76f, 0.7f, 0.64f};
+        int[] pads = {12, 8, 8, 6};
+        int pad = 12, gap = 3;
+        tabScale = 0.76f;
+        for (int attempt = 0; attempt < scales.length; attempt++) {
+            if (attempt == 1) { showEsc = false; rightStart = headerSettings.getX() - 6; }
+            tabScale = scales[attempt];
+            pad = pads[attempt];
+            gap = attempt == 0 ? 3 : 2;
+            int tabsW = 0;
+            for (String t : TAB_LABELS) tabsW += wb(t, tabScale) + pad + gap;
+            if (tabsW <= rightStart - leftEnd) break;
         }
+        int tabsW = 0;
+        for (String t : TAB_LABELS) tabsW += wb(t, tabScale) + pad + gap;
         int tx = Math.max(leftEnd, leftEnd + (rightStart - leftEnd - tabsW) / 2);
         for (int i = 0; i < TAB_LABELS.length; i++) {
             final int t = i;
-            int bw = w(TAB_LABELS[i], 0.75f) + pad;
+            int bw = wb(TAB_LABELS[i], tabScale) + pad;
             tabButtons.add(btn(TAB_LABELS[i], tx, fy + 8, bw, () -> { tab = t; scroll = 0; wlPlayer = null; rebuildWidgets(); }));
             tx += bw + gap;
         }
@@ -266,8 +273,7 @@ public class OverviewScreen extends Screen {
         int x = fx + 10, cw = fw - 20;
         int size = PaymentLedger.history().size();
         scroll = Math.max(0, Math.min(scroll, Math.max(0, size - sVisible())));
-        clearSessionsBtn = size > 0 ? btn("Clear all", x + cw - 10 - (w("Clear all", 0.76f) + 18), sPanelY() + 6,
-                w("Clear all", 0.76f) + 18, () -> armOrRun(-1, () -> { PaymentLedger.clearHistory(); rebuildWidgets(); })) : null;
+        clearSessionsBtn = null;   // no Clear all button: delete sessions one at a time with the x
         for (int i = 0; i < sVisible() && scroll + i < size; i++) {
             final int idx = scroll + i;
             Button b = btn("", x + cw - 26, sRowsY() + i * S_ROW_H - 1, 16,
@@ -475,12 +481,31 @@ public class OverviewScreen extends Screen {
     }
 
     private void pill(GuiGraphicsExtractor g, Button b, boolean on, int mx, int my) {
+        pill(g, b, on, mx, my, 0.76f);
+    }
+
+    private void pill(GuiGraphicsExtractor g, Button b, boolean on, int mx, int my, float sc) {
         int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
         boolean hover = over(b, mx, my);
         if (on) g.fill(x, y, x + bw, y + bh, PURPLE);
         else box(g, x, y, bw, bh, hover ? 0xFF1E1A2E : PANEL, BORDER);
         String s = b.getMessage().getString();
-        text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + (bh - 7) / 2, on ? TEXT : MUTED, 0.76f, true);
+        text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? TEXT : MUTED, sc, true);
+    }
+
+    /** One bar per day, today on the right and brightest. */
+    private void bars(GuiGraphicsExtractor g, long[] vals, int x, int y, int bw, int bh, int color) {
+        int n = vals.length;
+        long max = 1;
+        for (long v : vals) max = Math.max(max, v);
+        int gap = n > 14 ? 1 : 3;
+        float each = (bw - gap * (n - 1)) / (float) n;
+        for (int i = 0; i < n; i++) {
+            int x0 = x + Math.round(i * (each + gap)), x1 = x + Math.round(i * (each + gap) + each);
+            int h = vals[i] <= 0 ? 1 : Math.max(2, Math.round(bh * vals[i] / (float) max));
+            boolean today = i == n - 1;
+            g.fill(x0, y + bh - h, Math.max(x0 + 1, x1), y + bh, today ? color : alpha(color, vals[i] <= 0 ? 50 : 130));
+        }
     }
 
     private void spark(GuiGraphicsExtractor g, long[] vals, int x, int y, int sw, int sh, int color) {
@@ -541,7 +566,8 @@ public class OverviewScreen extends Screen {
         g.fill(x, y + 1, x + size, y + size - 1, PURPLE);
         String l = name.isEmpty() ? "?" : name.substring(0, 1).toUpperCase(Locale.US);
         float sc = size / 12f;
-        text(g, l, x + (size - wb(l, sc)) / 2, y + Math.round((size - 7 * sc) / 2f), TEXT, sc, true);
+        int ty = y + Math.round((size - Fonts.capHeight(sc)) / 2f - Fonts.capTop(sc));   // letter centered top-to-bottom
+        text(g, l, x + (size - wb(l, sc)) / 2, ty, TEXT, sc, true);
     }
 
     /** Payments in the current range, oldest first. */
@@ -613,7 +639,7 @@ public class OverviewScreen extends Screen {
         g.fill(x + 6, by0 + 6, x + 10, by0 + 10, paused ? AMBER : GREEN);
         caps(g, live, x + 14, by0 + 4, MUTED);
 
-        for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
+        for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my, tabScale);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
         if (showEsc) text(g, "ESC close", escX - w("ESC close", 0.72f), fy + 11, DIM, 0.72f, false);
         if (headerSettings != null) pill(g, headerSettings, false, mx, my);
@@ -676,11 +702,12 @@ public class OverviewScreen extends Screen {
         card(g, c1, cy, cw, ch, "BALANCE", bv < 0 ? "$---" : Money.format(bv), balSub, GOLD, TEXT, balDown ? RED : GREEN, balVals);
 
         int days = switch (range) { case 0 -> 1; case 1 -> 7; default -> 30; };
-        long[] play = PaymentLedger.playLastDays(Math.max(2, days));
+        long[] play = PaymentLedger.playLastDays(Math.max(7, days));   // at least a week of bars
         long inRange = 0;
         for (int i = Math.max(0, play.length - days); i < play.length; i++) inRange += play[i];
         String playSub = "+" + (inRange / 3_600_000L) + "h " + (inRange % 3_600_000L / 60_000L) + "m " + rangeWord();
-        card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, play);
+        card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, null);
+        bars(g, play, c2 + 10, cy + ch - 22, cw - 20, 16, BLUE);
 
         String since0 = pays.isEmpty() ? "no payments yet" : "since " + day(pays.get(0).ts);
         int pc = net >= 0 ? GREEN : RED;
@@ -739,7 +766,7 @@ public class OverviewScreen extends Screen {
         caps(g, label, x + 10, y + 9, MUTED);
         text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
         text(g, sub, x + 10, y + 37, subColor, 0.72f, false);
-        spark(g, series, x + 8, y + ch - 22, cw - 16, 16, lineColor);
+        if (series != null) spark(g, series, x + 8, y + ch - 22, cw - 16, 16, lineColor);
     }
 
     private void chart(GuiGraphicsExtractor g, long[] vals, int x, int y, int cw, int ch) {
@@ -1147,24 +1174,32 @@ public class OverviewScreen extends Screen {
 
     /** Smooth ring: lit part (from the top, clockwise) shows the time left. */
     static void ring(GuiGraphicsExtractor g, int cx, int cy, int r, int thick, float frac, int litColor, int restColor) {
-        int ro = r, ri = r - thick;
-        int ro2 = ro * ro, ri2 = ri * ri;
-        for (int dy = -ro; dy <= ro; dy++) {
-            int runStart = Integer.MIN_VALUE, runColor = 0;
-            for (int dx = -ro; dx <= ro + 1; dx++) {
+        float ro = r, ri = r - thick;
+        int lim = r + 1;
+        for (int dy = -lim; dy <= lim; dy++) {
+            int runStart = 0, runColor = 0;
+            for (int dx = -lim; dx <= lim + 1; dx++) {
                 int col = 0;
-                if (dx <= ro) {
-                    int d2 = dx * dx + dy * dy;
-                    if (d2 <= ro2 && d2 >= ri2) {
-                        double ang = Math.toDegrees(Math.atan2(dx, -dy));   // 0 at the top, clockwise
+                float cover = 0f;
+                if (dx <= lim) {
+                    float d = (float) Math.sqrt((dx + 0.5f) * (dx + 0.5f) + (dy + 0.5f) * (dy + 0.5f));
+                    cover = Math.max(0f, Math.min(1f, ro - d + 0.5f)) * Math.max(0f, Math.min(1f, d - ri + 0.5f));
+                    if (cover > 0f) {
+                        double ang = Math.toDegrees(Math.atan2(dx + 0.5, -(dy + 0.5)));   // 0 at the top, clockwise
                         if (ang < 0) ang += 360;
                         col = (litColor != 0 && ang < frac * 360) ? litColor : restColor;
                     }
                 }
-                if (col != runColor) {   // close the previous run
+                boolean solid = cover >= 0.99f;
+                int runKey = solid ? col : 0;
+                if (runKey != runColor) {   // close the previous solid run
                     if (runColor != 0) g.fill(cx + runStart, cy + dy, cx + dx, cy + dy + 1, runColor);
                     runStart = dx;
-                    runColor = col;
+                    runColor = runKey;
+                }
+                if (!solid && cover > 0f) {   // soft edge pixel
+                    int a = (int) (((col >>> 24) & 0xFF) * cover);
+                    g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, (a << 24) | (col & 0xFFFFFF));
                 }
             }
         }
@@ -1187,15 +1222,21 @@ public class OverviewScreen extends Screen {
         box(g, lx, top, lw, rh, PANEL, BORDER);
         String t = "AUCTIONS";
         caps(g, t, lx + (lw - capsW(t)) / 2, top + 8, TEXT);
-        int ccx = lx + lw / 2, ccy = top + rh / 2 + 6, rad = Math.max(28, Math.min(46, rh / 2 - 16));
+        int ccx = lx + lw / 2, ccy = top + rh / 2 + 1, rad = Math.max(30, Math.min(64, rh / 2 - 20));   // room above for the title, below for the winner
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
         ring(g, ccx, ccy, rad, 5, frac, Auction.running ? Auction.color : 0, 0xFF3C3854);
-        if (!Auction.item.isEmpty()) itemIcon(g, Auction.item, ccx - 12, ccy - 26, 1.5f);
+        int inner = (rad - 5) * 2 - 12;   // room inside the ring for text
+        if (!Auction.item.isEmpty()) itemIcon(g, Auction.item, ccx - 12, ccy - rad / 2 - 10, 1.5f);
         String big = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
-                : Auction.ended ? (Auction.winner != null ? "SOLD" : "NO BIDS") : Auction.item.isEmpty() ? "PICK ITEM" : "READY";
-        text(g, big, ccx - wb(big, 1.2f) / 2, ccy - 2, Auction.running ? Auction.color : TEXT, 1.2f, true);
-        String nm = Auction.item.isEmpty() ? "choose on the right" : Auction.itemName;
-        text(g, nm, ccx - w(nm, 0.72f) / 2, ccy + 12, MUTED, 0.72f, false);
+                : Auction.ended ? (Auction.winner != null ? "SOLD" : "NO BIDS") : Auction.item.isEmpty() ? "PICK" : "READY";
+        float bs = 1.2f;
+        while (bs > 0.7f && wb(big, bs) > inner) bs -= 0.05f;
+        int bigY = Auction.item.isEmpty() ? ccy - 8 : ccy + 1;
+        text(g, big, ccx - wb(big, bs) / 2, bigY, Auction.running ? Auction.color : TEXT, bs, true);
+        String nm = Auction.item.isEmpty() ? "an item" : Auction.itemName;
+        float ns = 0.72f;
+        while (nm.length() > 3 && w(nm, ns) > inner) nm = nm.substring(0, nm.length() - 2) + ".";   // keep it inside the ring
+        text(g, nm, ccx - w(nm, ns) / 2, bigY + 15, MUTED, ns, false);
         if (Auction.ended && Auction.winner != null) {
             String win = Auction.winner + " won the auction!  -  " + Money.format(Auction.winAmount);
             text(g, win, ccx - wb(win, 0.76f) / 2, top + rh - 12, GREEN, 0.76f, true);
