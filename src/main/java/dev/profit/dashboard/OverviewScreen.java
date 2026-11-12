@@ -180,7 +180,7 @@ public class OverviewScreen extends Screen {
                 filterButtons.add(0, btn(f[i], px - pw, feed[1] + 6, pw, () -> filter = idx));
                 px -= pw + 3;
             }
-        } else if (tab == 1) {
+        } else if (tab == 1 || tab == 2) {
             int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 26;
             searchBox = new EditBox(font, sbx + 18, sby + 8, sbw - 24, 12, Component.literal("Search"));
             searchBox.setBordered(false);
@@ -585,6 +585,23 @@ public class OverviewScreen extends Screen {
         g.fill(x, by, x + 2, by + bh, 0xFF5F5B75);
     }
 
+    private void drawSearchFrame(GuiGraphicsExtractor g, int y) {
+        if (searchBox == null) return;
+        int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = y;
+        int bc = searchBox.isFocused() ? PURPLE : 0xFF4A3F7A;
+        g.fill(sbx, sby, sbx + sbw, sby + 1, bc);
+        g.fill(sbx, sby + 25, sbx + sbw, sby + 26, bc);
+        g.fill(sbx, sby, sbx + 1, sby + 26, bc);
+        g.fill(sbx + sbw - 1, sby, sbx + sbw, sby + 26, bc);
+        int mx0 = sbx + 7, my0 = sby + 8;
+        g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, MUTED);
+        g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, MUTED);
+        g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, MUTED);
+        g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, MUTED);
+        g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, MUTED);
+        g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, MUTED);
+    }
+
     // ================= WIN / LOSS =================
     private void drawWinLoss(GuiGraphicsExtractor g) {
         List<PaymentLedger.Entry> all = new ArrayList<>();   // everyone, all time
@@ -659,9 +676,10 @@ public class OverviewScreen extends Screen {
         List<PaymentLedger.Entry> losers = new ArrayList<>();
         int ready = 0;
         long owe = 0;
+        String q = search.trim().toLowerCase(Locale.US);
         for (PaymentLedger.Entry e : PaymentLedger.entries(false)) {   // everyone, all time
             long lost = -e.net();   // what they lost to you
-            if (lost > 0) {
+            if (lost > 0 && (q.isEmpty() || e.name.toLowerCase(Locale.US).contains(q))) {
                 losers.add(e);
                 if (lost >= st.rakeMin) { ready++; owe += lost * st.rakePct / 100; }
             }
@@ -674,6 +692,7 @@ public class OverviewScreen extends Screen {
         x += chip(g, x, y, "PLAYERS", String.valueOf(losers.size()), TEXT) + 6;
         x += chip(g, x, y, "READY", String.valueOf(ready), GREEN) + 6;
         chip(g, x, y, "YOU OWE", Money.format(owe), TEXT);
+        drawSearchFrame(g, y);
 
         int py = y + 34, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
         box(g, px, py, pw, ph, PANEL, BORDER);
@@ -696,7 +715,8 @@ public class OverviewScreen extends Screen {
             int fill = (int) ((be - bx) * Math.min(1.0, lost / (double) st.rakeMin));
             if (fill > 0) g.fill(bx, by, bx + fill, by + 2, isReady ? GREEN : PINK);
         }
-        if (losers.isEmpty()) text(g, "Nobody has lost to you yet", px + 10, ry + 4, DIM, 0.85f, false);
+        if (losers.isEmpty()) text(g, q.isEmpty() ? "Nobody has lost to you yet" : "No players match \"" + search.trim() + "\"",
+                px + 10, ry + 4, DIM, 0.85f, false);
         scrollbar(g, px + pw - 6, ry, py + ph - 8 - ry, visible, losers.size());
     }
 
