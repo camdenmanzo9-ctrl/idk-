@@ -122,7 +122,7 @@ public class OverviewScreen extends Screen {
     private int small(String s) { return w(s, 0.75f) + 12; }
 
     private Button btn(String label, int x, int y, int bw, Runnable r) {
-        return addRenderableWidget(Button.builder(Component.literal(label), b -> r.run()).bounds(x, y, bw, 12).build());
+        return addRenderableWidget(Button.builder(Component.literal(label), b -> r.run()).bounds(x, y, bw, 16).build());
     }
 
     private int contentY() { return fy + 30; }
@@ -294,7 +294,7 @@ public class OverviewScreen extends Screen {
         if (on) g.fill(x, y, x + bw, y + bh, PURPLE);
         else box(g, x, y, bw, bh, hover ? 0xFF1E1A2E : PANEL, BORDER);
         String s = b.getMessage().getString();
-        text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + 3, on ? TEXT : MUTED, 0.76f, true);
+        text(g, s, x + (bw - wb(s, 0.76f)) / 2, y + (bh - 7) / 2, on ? TEXT : MUTED, 0.76f, true);
     }
 
     private void spark(GuiGraphicsExtractor g, long[] vals, int x, int y, int sw, int sh, int color) {
@@ -421,10 +421,11 @@ public class OverviewScreen extends Screen {
         x += w("v1.0", 0.74f) + 10;
         // DATA LIVE badge
         String live = paused ? "PAUSED" : "DATA LIVE";
-        int bw = capsW(live) + 16;
-        box(g, x, hy - 3, bw, 13, PANEL, BORDER);
-        g.fill(x + 5, hy + 2, x + 8, hy + 5, paused ? AMBER : GREEN);
-        caps(g, live, x + 11, hy + 1, MUTED);
+        int bw = capsW(live) + 20;
+        int by0 = fy + 8;
+        box(g, x, by0, bw, 16, PANEL, BORDER);
+        g.fill(x + 6, by0 + 6, x + 10, by0 + 10, paused ? AMBER : GREEN);
+        caps(g, live, x + 14, by0 + 4, MUTED);
 
         for (int i = 0; i < tabButtons.size(); i++) pill(g, tabButtons.get(i), i == tab, mx, my);
         for (int i = 0; i < rangeButtons.size(); i++) pill(g, rangeButtons.get(i), i == range, mx, my);
@@ -853,7 +854,7 @@ public class OverviewScreen extends Screen {
     private int aLeftW() { return (fw - 28) * 49 / 100; }
     private int aRingH() { return Math.max(96, Math.min(150, (contentBottom() - aTop()) * 42 / 100)); }
     private int aCtrlY() { return aTop() + aRingH() + 6; }
-    private int aColorY() { return aCtrlY() + 22; }
+    private int aColorY() { return aCtrlY() + 24; }
     private int aSwitchY() { return aColorY() + 18; }
     private int aBidsY() { return aSwitchY() + 34; }
     private int[] aGrid() {   // x, y, w, h of the item grid
@@ -870,18 +871,20 @@ public class OverviewScreen extends Screen {
             else Auction.start();
         });
         startBtn.setHeight(16);
-        clearBtn = btn("Clear", startBtn.getX() + startBtn.getWidth() + 8, aCtrlY() + 2, w("Clear", 0.75f) + 10, Auction::clear);
+        clearBtn = btn("Clear", startBtn.getX() + startBtn.getWidth() + 8, aCtrlY(), w("Clear", 0.8f) + 18, Auction::clear);
         int dx = lx + lw;
         for (int i = DURATION_LABELS.length - 1; i >= 0; i--) {
             final long d = DURATIONS[i];
             int bw = small(DURATION_LABELS[i]);
-            durationBtns.add(0, btn(DURATION_LABELS[i], dx - bw, aCtrlY() + 2, bw, () -> { if (!Auction.running) Auction.durationMs = d; }));
+            durationBtns.add(0, btn(DURATION_LABELS[i], dx - bw, aCtrlY(), bw, () -> { if (!Auction.running) Auction.durationMs = d; }));
             dx -= bw + 3;
         }
-        int cx = lx + w("TIMER COLOR", 0.76f) + 24;
+        int cx = lx + capsW("TIMER COLOR") + 12;
         for (int i = 0; i < TIMER_COLORS.length; i++) {
             final int col = TIMER_COLORS[i];
-            colorBtns.add(btn("", cx + i * 16, aColorY(), 12, () -> Auction.color = col));
+            Button cb = btn("", cx + i * 17, aColorY(), 12, () -> Auction.color = col);
+            cb.setHeight(12);
+            colorBtns.add(cb);
         }
         switchBtn = btn("", lx, aSwitchY(), lw, () -> Auction.switchOn = !Auction.switchOn);
         switchBtn.setHeight(28);
@@ -915,6 +918,22 @@ public class OverviewScreen extends Screen {
         }
     }
 
+    /** Smooth ring: lit part (from the top, clockwise) shows the time left. */
+    static void ring(GuiGraphicsExtractor g, int cx, int cy, int r, int thick, float frac, int litColor, int restColor) {
+        int ro = r, ri = r - thick;
+        int ro2 = ro * ro, ri2 = ri * ri;
+        for (int dy = -ro; dy <= ro; dy++) {
+            for (int dx = -ro; dx <= ro; dx++) {
+                int d2 = dx * dx + dy * dy;
+                if (d2 > ro2 || d2 < ri2) continue;
+                double ang = Math.toDegrees(Math.atan2(dx, -dy));   // 0 at the top, clockwise
+                if (ang < 0) ang += 360;
+                int col = (litColor != 0 && ang < frac * 360) ? litColor : restColor;
+                g.fill(cx + dx, cy + dy, cx + dx + 1, cy + dy + 1, col);
+            }
+        }
+    }
+
     private void itemIcon(GuiGraphicsExtractor g, net.minecraft.world.item.ItemStack st, int x, int y, float scale) {
         g.pose().pushMatrix();
         g.pose().translate(x, y);
@@ -934,13 +953,7 @@ public class OverviewScreen extends Screen {
         caps(g, t, lx + (lw - capsW(t)) / 2, top + 8, TEXT);
         int ccx = lx + lw / 2, ccy = top + rh / 2 + 6, rad = Math.max(28, Math.min(46, rh / 2 - 16));
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
-        int gray = 0xFF55516A;
-        for (int a = 0; a < 360; a++) {
-            double ang = Math.toRadians(a - 90);
-            int px = ccx + (int) Math.round(Math.cos(ang) * rad), py = ccy + (int) Math.round(Math.sin(ang) * rad);
-            boolean lit = Auction.running && a < frac * 360;
-            g.fill(px - 2, py - 2, px + 3, py + 3, lit ? Auction.color : gray);
-        }
+        ring(g, ccx, ccy, rad, 5, frac, Auction.running ? Auction.color : 0, 0xFF3C3854);
         if (!Auction.item.isEmpty()) itemIcon(g, Auction.item, ccx - 12, ccy - 26, 1.5f);
         String big = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
                 : Auction.ended ? (Auction.winner != null ? "SOLD" : "NO BIDS") : Auction.item.isEmpty() ? "PICK ITEM" : "READY";
@@ -959,16 +972,22 @@ public class OverviewScreen extends Screen {
             boolean disabled = !Auction.running && Auction.item.isEmpty();
             int col = Auction.running ? RED : disabled ? 0xFF3A3550 : PURPLE;
             g.fill(x, y, x + bw, y + bh, over(b, mx, my) && !disabled ? alpha(col, 230) : col);
-            int tx0 = x + 8, ty0 = y + 4;
+            int tx0 = x + 9, ty0 = y + (bh - 8) / 2;
             if (Auction.running) g.fill(tx0, ty0, tx0 + 7, ty0 + 7, TEXT);
             else for (int i = 0; i < 4; i++) g.fill(tx0 + i, ty0 + i, tx0 + i + 1, ty0 + 8 - i, TEXT);
             String s = Auction.running ? "END NOW" : "START AUCTION";
-            text(g, s, x + 20, y + 4, TEXT, 0.75f, true);
+            text(g, s, x + 22, y + (bh - 7) / 2, TEXT, 0.76f, true);
         }
-        text(g, "Clear", clearBtn.getX() + 5, clearBtn.getY() + 3, over(clearBtn, mx, my) ? TEXT : MUTED, 0.75f, false);
+        {
+            Button b = clearBtn;
+            box(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), over(b, mx, my) ? 0xFF1E1A2E : PANEL, BORDER);
+            String c = "Clear";
+            text(g, c, b.getX() + (b.getWidth() - w(c, 0.8f)) / 2, b.getY() + (b.getHeight() - 7) / 2,
+                    over(b, mx, my) ? TEXT : MUTED, 0.8f, false);
+        }
         for (int i = 0; i < durationBtns.size(); i++) pill(g, durationBtns.get(i), DURATIONS[i] == Auction.durationMs, mx, my);
 
-        caps(g, "TIMER COLOR", lx, aColorY() + 3, DIM);
+        caps(g, "TIMER COLOR", lx, aColorY() + 3, MUTED);
         for (int i = 0; i < colorBtns.size(); i++) {
             Button b = colorBtns.get(i);
             int x = b.getX(), y = b.getY();

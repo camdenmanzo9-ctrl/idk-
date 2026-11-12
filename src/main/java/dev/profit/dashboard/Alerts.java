@@ -189,12 +189,7 @@ public final class Alerts {
         // ring: lit part = time left, in the chosen timer color
         int ccy = y + 40, rad = 20;
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
-        for (int a = 0; a < 360; a += 2) {
-            double ang = Math.toRadians(a - 90);
-            int px = cx + (int) Math.round(Math.cos(ang) * rad), py = ccy + (int) Math.round(Math.sin(ang) * rad);
-            boolean lit = a < frac * 360;
-            g.fill(px - 1, py - 1, px + 2, py + 2, lit ? Auction.color : 0x50FFFFFF);
-        }
+        OverviewScreen.ring(g, cx, ccy, rad, 3, frac, Auction.color, 0x50FFFFFF);
         g.item(Auction.item, cx - 8, ccy - 13);
         String t = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
                 : (Auction.winner != null ? "SOLD" : "ENDED");
