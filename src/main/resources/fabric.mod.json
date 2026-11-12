@@ -4,11 +4,15 @@
   "version": "${version}",
   "name": "Snowy's Dashboard",
   "description": "Snowy's payment dashboard: balance, playtime, profit, payment feed and profit chart.",
-  "authors": ["camdenmanzo9"],
+  "authors": [
+    "Snowy"
+  ],
   "license": "All-Rights-Reserved",
   "environment": "client",
   "entrypoints": {
-    "client": ["dev.profit.dashboard.DashboardClient"]
+    "client": [
+      "dev.profit.dashboard.DashboardClient"
+    ]
   },
   "depends": {
     "fabricloader": ">=0.19.0",

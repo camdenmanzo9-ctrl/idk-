@@ -13,7 +13,8 @@ import java.util.List;
 public final class Settings {
     // General
     public int accent = 0x7CFF3A;
-    public boolean skinFaces = true;   // false = purple letter circles like the reference picture
+    public boolean skinFaces = true;
+    public String displayName = "";   // name shown in "Welcome back, ..." (empty = your username)   // false = purple letter circles like the reference picture
 
     // Chat
     public boolean chatColors = true, boldNames = false, boldAmounts = false;

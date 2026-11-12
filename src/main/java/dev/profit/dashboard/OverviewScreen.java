@@ -170,7 +170,7 @@ public class OverviewScreen extends Screen {
         auctionButtons.clear();
 
         // tabs: one rounded bar, measured in bold, shrunk if needed so nothing is ever cut off
-        int leftEnd = fx + 23 + capsW("DASHBOARD") + 6 + w("v1.0", 0.74f) + 10 + capsW("DATA LIVE") + 20 + 12;
+        int leftEnd = fx + 27 + capsW("DASHBOARD") + 6 + w("v1.0", 0.74f) + 10 + capsW("DATA LIVE") + 20 + 12;
         int rightEnd = escX;
         float[] scales = {0.76f, 0.72f, 0.66f, 0.6f};
         int[] pads = {14, 12, 10, 8};
@@ -439,7 +439,7 @@ public class OverviewScreen extends Screen {
 
     private int welcomeY() { return contentY(); }
     private int cardsY() { return welcomeY() + 48; }
-    private int cardsH() { return 74; }
+    private int cardsH() { return 80; }
     private int[] feedBox() {
         int y = cardsY() + cardsH() + 8, h = contentBottom() - y;
         int bw = (fw - 30) * 36 / 100;
@@ -666,8 +666,8 @@ public class OverviewScreen extends Screen {
     private void drawHeader(GuiGraphicsExtractor g, int mx, int my) {
         int hy = fy + 10;
         int lx = fx + 10;
-        donutRing(g, lx + 4, hy + 4);
-        int x = lx + 13 + caps(g, "DASHBOARD", lx + 13, hy + 1, TEXT) + 6;
+        donutRing(g, lx + 5, hy + 4);
+        int x = lx + 17 + caps(g, "DASHBOARD", lx + 17, hy + 1, TEXT) + 6;
         text(g, "v1.0", x, hy + 2, DIM, 0.74f, false);
         x += w("v1.0", 0.74f) + 10;
         // DATA LIVE badge
@@ -719,9 +719,9 @@ public class OverviewScreen extends Screen {
     /** Sharp purple donut: thick ring, clear hole, light top-left, shaded bottom-right. No soft pixels. */
     private static void donutRing(GuiGraphicsExtractor g, int cx, int cy) {
         final int LIGHT = 0xFFC4A5FF, MID = 0xFF8B5CF6, DARK = 0xFF5B3BB0;
-        double R = 6.5, HOLE = 2.6;
-        for (int dy = -7; dy <= 7; dy++) {
-            for (int dx = -7; dx <= 7; dx++) {
+        double R = 8.0, HOLE = 3.2;
+        for (int dy = -9; dy <= 9; dy++) {
+            for (int dx = -9; dx <= 9; dx++) {
                 double px = dx + 0.5, py = dy + 0.5;
                 double d = Math.sqrt(px * px + py * py);
                 if (d > R || d < HOLE) continue;
@@ -782,7 +782,8 @@ public class OverviewScreen extends Screen {
         }
         int nx = fx + 60;
         text(g, "Welcome back, ", nx, wy + 9, TEXT, 1.6f, true);
-        glowText(g, me, nx + wb("Welcome back, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f);
+        String shown = Settings.S.displayName == null || Settings.S.displayName.isBlank() ? me : Settings.S.displayName;
+        glowText(g, shown, nx + wb("Welcome back, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f);
         text(g, "Have a great time on DonutSMP!", nx, wy + 27, MUTED, 0.75f, false);
 
         // session badge
@@ -899,8 +900,8 @@ public class OverviewScreen extends Screen {
         softGlow(g, x + cw * 55 / 100, y + ch / 2, cw / 3, ch / 2 - 4, lineColor, 12);
         caps(g, label, x + 10, y + 9, MUTED);
         round(g, x + cw - 14, y + 10, 5, 5, 2, lineColor);
-        text(g, value, x + 10, y + 21, valueColor, 1.5f, true);
-        text(g, sub, x + 10, y + 37, subColor, 0.72f, false);
+        text(g, value, x + 10, y + 25, valueColor, 1.5f, true);
+        text(g, sub, x + 10, y + 43, subColor, 0.72f, false);
         if (series != null) smoothLine(g, series, x + 10, y + ch - 22, cw - 20, 16, lineColor);
     }
 
