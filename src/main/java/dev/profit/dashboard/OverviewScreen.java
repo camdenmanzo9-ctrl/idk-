@@ -31,7 +31,7 @@ public class OverviewScreen extends Screen {
 
     private final List<Button> rangeButtons = new ArrayList<>();
     private final List<Button> filterButtons = new ArrayList<>();
-    private Button pauseButton, moreButton, settingsButton;
+    private Button pauseButton, settingsButton;
 
     public OverviewScreen() {
         super(Component.literal("Dashboard"));
@@ -71,11 +71,7 @@ public class OverviewScreen extends Screen {
         settingsButton = btn("SETTINGS", bx - small("SETTINGS"), fy + 7, () -> {
             if (minecraft != null) minecraft.setScreen(new SettingsScreen(this));
         });
-        bx -= small("SETTINGS") + 4;
-        moreButton = btn("MORE", bx - small("MORE"), fy + 7, () -> {
-            if (minecraft != null) minecraft.setScreen(new DashboardScreen());
-        });
-        bx -= small("MORE") + 10;
+        bx -= small("SETTINGS") + 10;
         pauseButton = btn("PAUSE", bx - small("PAUSE"), fy + 7, this::togglePause);
         bx -= small("PAUSE") + 10;
         for (int i = RANGE_LABELS.length - 1; i >= 0; i--) {
@@ -272,7 +268,6 @@ public class OverviewScreen extends Screen {
             String s = paused ? "RESUME" : "PAUSE";
             text(g, s, x + (bw - w(s, 0.75f)) / 2, y + 3, AMBER, 0.75f, false);
         }
-        pill(g, moreButton, false, PURPLE, mouseX, mouseY);
         pill(g, settingsButton, false, PURPLE, mouseX, mouseY);
         g.fill(fx + 1, fy + 25, fx + fw - 1, fy + 26, BORDER);
 

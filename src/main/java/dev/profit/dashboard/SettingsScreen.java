@@ -21,8 +21,7 @@ public class SettingsScreen extends Screen {
         HUD("Profit HUD", "The profit box on your screen"),
         POPUP("Popup alert", "The alert for big payments you receive"),
         SOUNDS("Sounds", "Sound effects for alerts and confirmations"),
-        PAY("Pay confirm", "The screen that asks before a big /pay"),
-        BOARD("Bet board", "Your games and bet limits on screen");
+        PAY("Pay confirm", "The screen that asks before a big /pay");
 
         final String label, about;
         Section(String label, String about) { this.label = label; this.about = about; }
@@ -167,17 +166,6 @@ public class SettingsScreen extends Screen {
                         () -> s.confirmSoundIndex = Math.floorMod(s.confirmSoundIndex + 1, Alerts.SOUND_NAMES.length));
                 action("Preview confirm sound", () -> Alerts.playSound(s.confirmSoundIndex, 1));
             }
-            case BOARD -> {
-                toggle("Show board", () -> s.boardShow, v -> s.boardShow = v);
-                String[] spots = {"Top left", "Top right", "Bottom left", "Bottom right", "Left middle", "Right middle"};
-                picker("Position", () -> spots[Math.floorMod(s.boardPos, 6)], () -> s.boardPos = Math.floorMod(s.boardPos - 1, 6),
-                        () -> s.boardPos = Math.floorMod(s.boardPos + 1, 6));
-                stepper("Size", () -> s.boardSize + "x", () -> s.boardSize = clamp(s.boardSize - 0.1f, 0.4f, 2f),
-                        () -> s.boardSize = clamp(s.boardSize + 0.1f, 0.4f, 2f));
-                stepper("Row opacity", () -> s.boardOpacity + "%", () -> s.boardOpacity = clampI(s.boardOpacity - 5, 0, 100),
-                        () -> s.boardOpacity = clampI(s.boardOpacity + 5, 0, 100));
-                action("Reset games to default", () -> { s.boardTiers = Settings.defaultTiers(); Settings.save(); });
-            }
             case PAY -> {
                 toggle("Ask before /pay", () -> s.payAsk, v -> s.payAsk = v);
                 picker("Ask from", () -> Money.format(s.payFrom), () -> s.payFrom = Settings.stepMoney(s.payFrom, -1),
@@ -207,8 +195,8 @@ public class SettingsScreen extends Screen {
     // ---------------- layout ----------------
     @Override
     protected void init() {
-        ww = Math.min(width - 16, 470);
-        wh = Math.min(height - 16, 300);
+        ww = Math.min(width - 80, 430);
+        wh = Math.min(height - 40, 270);
         wx = (width - ww) / 2;
         wy = (height - wh) / 2;
 

@@ -12,7 +12,7 @@ import java.util.List;
 /** All the options from the Settings screen, saved in config/bettors-settings.json. */
 public final class Settings {
     // General
-    public int accent = 0x4DA3FF;
+    public int accent = 0x7CFF3A;
 
     // Chat
     public boolean chatColors = true, boldNames = false, boldAmounts = false;
@@ -45,7 +45,7 @@ public final class Settings {
             payConfirm = 0x2F7BFF, payCancel = 0xE74C3C, payBg = 0x0C1424;
 
     // Bet board (the games / limits list on your screen)
-    public boolean boardShow = true;
+    public boolean boardShow = false;   // in-game board removed from the menu; kept off
     public int boardPos = 4;          // 0 TL, 1 TR, 2 BL, 3 BR, 4 left middle, 5 right middle
     public float boardSize = 1.0f;
     public int boardOpacity = 60;

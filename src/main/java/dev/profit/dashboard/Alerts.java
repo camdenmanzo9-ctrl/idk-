@@ -86,7 +86,6 @@ public final class Alerts {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) return;
         Font f = mc.font;
-        Board.render(g, f, mc);
         if (Settings.S.hudShow) renderProfitBox(g, f, mc);
         if (current != null) renderPopup(g, f, mc);
     }
