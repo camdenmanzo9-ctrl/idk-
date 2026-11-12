@@ -22,16 +22,17 @@ public class OverviewScreen extends Screen {
             GOLD = 0xFFE0B24A, BLUE = 0xFF7B8CFF, RED = 0xFFFF5A6E, GREEN = 0xFF4ADE80, AMBER = 0xFFE0A030;
 
     private static final long DAY = 24L * 60 * 60 * 1000;
-    private static final String[] RANGE_LABELS = {"24H", "7D", "30D", "ALL"};
-    private static final long[] RANGES = {DAY, 7 * DAY, 30 * DAY, 0};
-    private static int range = 1;           // 7D like the picture
+    private static final String[] RANGE_LABELS = {"SESSION", "24H", "7D", "30D", "ALL"};
+    private static final long[] RANGES = {-1, DAY, 7 * DAY, 30 * DAY, 0};   // -1 = current session
+    private static int range = 2;           // 7D like the picture
     private static int filter = 0;          // 0 all, 1 in, 2 out
     private static boolean paused = false;
     private static long frozenAt = 0;
 
     private final List<Button> rangeButtons = new ArrayList<>();
     private final List<Button> filterButtons = new ArrayList<>();
-    private Button pauseButton, settingsButton;
+    private Button pauseButton, settingsButton, sessionButton;
+    private long confirmUntil = 0;
 
     public OverviewScreen() {
         super(Component.literal("Dashboard"));
@@ -41,7 +42,11 @@ public class OverviewScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     private long now() { return paused ? frozenAt : System.currentTimeMillis(); }
-    private long since() { return RANGES[range] == 0 ? 0 : now() - RANGES[range]; }
+    private long since() {
+        long r = RANGES[range];
+        if (r < 0) return PaymentLedger.sessionStartTime();
+        return r == 0 ? 0 : now() - r;
+    }
 
     private void togglePause() {
         paused = !paused;
@@ -52,7 +57,7 @@ public class OverviewScreen extends Screen {
     @Override
     public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
         int k = event.key();
-        if (k >= GLFW.GLFW_KEY_1 && k <= GLFW.GLFW_KEY_4) { range = k - GLFW.GLFW_KEY_1; return true; }
+        if (k >= GLFW.GLFW_KEY_1 && k <= GLFW.GLFW_KEY_5) { range = k - GLFW.GLFW_KEY_1; return true; }
         if (k == GLFW.GLFW_KEY_SPACE) { togglePause(); return true; }
         return super.keyPressed(event);
     }
@@ -81,6 +86,11 @@ public class OverviewScreen extends Screen {
             bx -= w + 2;
         }
 
+        // START / END SESSION, right after "DATA LIVE"
+        int sx = fx + 23 + capsW("DASHBOARD") + 16 + capsW("DATA LIVE") + 16;
+        sessionButton = addRenderableWidget(Button.builder(Component.literal(""), b -> onSession())
+                .bounds(sx, fy + 7, w("END SESSION", 0.75f) + 16, 12).build());
+
         // feed filter pills
         int[] feed = feedBox();
         int px = feed[0] + feed[2] - 8;
@@ -91,6 +101,24 @@ public class OverviewScreen extends Screen {
             filterButtons.add(0, btn(f[i], px - w, feed[1] + 6, () -> filter = idx));
             px -= w + 2;
         }
+    }
+
+    private int capsW(String s) {
+        int t = 0;
+        for (char ch : s.toCharArray()) t += wb(String.valueOf(ch), 0.7f) + 1;
+        return t;
+    }
+
+    private void onSession() {
+        if (!PaymentLedger.isSessionActive()) {
+            PaymentLedger.startSession();
+            confirmUntil = 0;
+            return;
+        }
+        long t = System.currentTimeMillis();
+        if (t > confirmUntil) { confirmUntil = t + 3000; return; }   // first click asks to confirm
+        confirmUntil = 0;
+        PaymentLedger.endSession();
     }
 
     private int small(String s) { return w(s, 0.75f) + 12; }
@@ -221,7 +249,7 @@ public class OverviewScreen extends Screen {
     }
 
     private String rangeWord() {
-        return switch (range) { case 0 -> "today"; case 1 -> "this week"; case 2 -> "this month"; default -> "all time"; };
+        return switch (range) { case 0 -> "this session"; case 1 -> "today"; case 2 -> "this week"; case 3 -> "this month"; default -> "all time"; };
     }
 
     private void face(GuiGraphicsExtractor g, String name, int x, int y, int size) {
@@ -276,6 +304,18 @@ public class OverviewScreen extends Screen {
             text(g, s, x + (bw - w(s, 0.75f)) / 2, y + 3, AMBER, 0.75f, false);
         }
         pill(g, settingsButton, false, PURPLE, mouseX, mouseY);
+        {
+            boolean active = PaymentLedger.isSessionActive();
+            boolean confirming = confirmUntil > System.currentTimeMillis();
+            Button b = sessionButton;
+            int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
+            int col = active ? RED : GREEN;
+            box(g, x, y, bw, bh, confirming ? alpha(RED, 90) : over(b, mouseX, mouseY) ? 0xFF1E1A2E : PANEL, col);
+            String s = confirming ? "CONFIRM?" : active ? "END SESSION" : "START SESSION";
+            text(g, s, x + (bw - w(s, 0.75f)) / 2, y + 3, col, 0.75f, false);
+            String timer = (active ? "" : "last ") + PaymentLedger.formatDuration(PaymentLedger.sessionMillis());
+            text(g, timer, x + bw + 6, y + 3, active ? MUTED : DIM, 0.75f, false);
+        }
         g.fill(fx + 1, fy + 25, fx + fw - 1, fy + 26, BORDER);
 
         // ---- welcome ----
@@ -315,7 +355,7 @@ public class OverviewScreen extends Screen {
                 balVals.length > 1 && balVals[balVals.length - 1] < balVals[0] ? RED : GREEN, balVals);
 
         // Playtime
-        int days = switch (range) { case 0 -> 1; case 1 -> 7; case 2 -> 30; default -> 30; };
+        int days = switch (range) { case 0, 1 -> 1; case 2 -> 7; default -> 30; };
         long[] play = PaymentLedger.playLastDays(Math.max(2, days));
         long inRange = 0;
         for (int i = play.length - days; i < play.length; i++) if (i >= 0) inRange += play[i];
@@ -360,14 +400,14 @@ public class OverviewScreen extends Screen {
         box(g, cb[0], cb[1], cb[2], cb[3], PANEL, BORDER);
         glow(g, cb[0] + cb[2] * 3 / 4, cb[1] + cb[3] / 3, cb[2] / 4, cb[3] / 3, net >= 0 ? GREEN : RED, 30);
         int capW = caps(g, "PROFIT / LOSS", cb[0] + 8, cb[1] + 9, TEXT);
-        text(g, "* " + RANGE_LABELS[range].toLowerCase(Locale.US) + " of data", cb[0] + 14 + capW, cb[1] + 9, DIM, 0.65f, false);
+        text(g, "* " + (range == 0 ? "this session" : RANGE_LABELS[range].toLowerCase(Locale.US) + " of data"), cb[0] + 14 + capW, cb[1] + 9, DIM, 0.65f, false);
         String big = signedMoney(net);
         text(g, big, cb[0] + cb[2] - 8 - wb(big, 1.4f), cb[1] + 6, net >= 0 ? GREEN : RED, 1.4f, true);
         chart(g, netSeries, cb[0] + 8, cb[1] + 26, cb[2] - 16, cb[3] - 34);
 
         String foot = "Display only - data from your own chat";
         text(g, foot, fx + 10, fy + fh - 10, DIM, 0.65f, false);
-        String esc = "1-4 range   SPACE pause   ESC close";
+        String esc = "1-5 range   SPACE pause   ESC close";
         text(g, esc, fx + fw - 10 - w(esc, 0.65f), fy + fh - 10, DIM, 0.65f, false);
     }
 
