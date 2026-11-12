@@ -18,7 +18,7 @@ public class SettingsScreen extends Screen {
     private enum Section {
         GENERAL("General", "Theme and general options"),
         CHAT("Chat", "How payment messages look in chat"),
-        HUD("Profit HUD", "The profit box on your screen"),
+        HUD("Profit HUD", "The box showing today's profit on your screen"),
         POPUP("Popup alert", "The alert for big payments you receive"),
         SOUNDS("Sounds", "Sound effects for alerts and confirmations"),
         PAY("Pay confirm", "The screen that asks before a big /pay");
@@ -114,7 +114,6 @@ public class SettingsScreen extends Screen {
                 toggle("Show HUD", () -> s.hudShow, v -> s.hudShow = v);
                 toggle("Accent bar", () -> s.hudAccentBar, v -> s.hudAccentBar = v);
                 toggle("Border", () -> s.hudBorder, v -> s.hudBorder = v);
-                toggle("Show paused", () -> s.hudShowPaused, v -> s.hudShowPaused = v);
                 stepper("Size", () -> s.hudSize + "x", () -> s.hudSize = clamp(s.hudSize - 0.1f, 0.5f, 2f),
                         () -> s.hudSize = clamp(s.hudSize + 0.1f, 0.5f, 2f));
                 stepper("Opacity", () -> s.hudOpacity + "%", () -> s.hudOpacity = clampI(s.hudOpacity - 5, 10, 100),
@@ -123,7 +122,7 @@ public class SettingsScreen extends Screen {
                 color("Gain", () -> s.hudGain, v -> s.hudGain = v, false);
                 color("Loss", () -> s.hudLoss, v -> s.hudLoss = v, false);
                 color("Zero", () -> s.hudZero, v -> s.hudZero = v, false);
-                color("Background", () -> s.hudBg, v -> s.hudBg = v, true);
+                color("BG", () -> s.hudBg, v -> s.hudBg = v, true);
                 color("Accent", () -> s.hudAccentColor, v -> s.hudAccentColor = v, false);
                 String[] corners = {"Top left", "Top right", "Bottom left", "Bottom right"};
                 picker("Position", () -> corners[s.hudCorner], () -> s.hudCorner = Math.floorMod(s.hudCorner - 1, 4),
@@ -143,7 +142,7 @@ public class SettingsScreen extends Screen {
                 toggle("Shine", () -> s.popupShine, v -> s.popupShine = v);
                 color("Amount", () -> s.popupAmount, v -> s.popupAmount = v, false);
                 color("Name", () -> s.popupName, v -> s.popupName = v, false);
-                color("Background", () -> s.popupBg, v -> s.popupBg = v, true);
+                color("BG", () -> s.popupBg, v -> s.popupBg = v, true);
                 color("Border", () -> s.popupBorder, v -> s.popupBorder = v, false);
                 action("Test popup (closes menu)", () -> { Alerts.testPopup(); if (minecraft != null) minecraft.setScreen(null); });
             }
@@ -179,7 +178,7 @@ public class SettingsScreen extends Screen {
                 stepper("Dim screen", () -> s.payDim + "%", () -> s.payDim = clampI(s.payDim - 5, 0, 95),
                         () -> s.payDim = clampI(s.payDim + 5, 0, 95));
                 color("Accent", () -> s.payAccent, v -> s.payAccent = v, false);
-                color("Background", () -> s.payBg, v -> s.payBg = v, true);
+                color("BG", () -> s.payBg, v -> s.payBg = v, true);
                 color("Name", () -> s.payName, v -> s.payName = v, false);
                 color("Amount", () -> s.payAmount, v -> s.payAmount = v, false);
                 color("Confirm btn", () -> s.payConfirm, v -> s.payConfirm = v, false);
@@ -289,7 +288,7 @@ public class SettingsScreen extends Screen {
 
         if (section == Section.CHAT) drawChatPreview(g);
 
-        String tip = "Tip: click a color box to cycle colors, or < > to change a choice";
+        String tip = "Click a color to change it, < > to pick";
         g.text(font, tip, wx + 114, wy + wh - 12, MUTED, false);
     }
 

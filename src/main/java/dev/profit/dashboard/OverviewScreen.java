@@ -171,9 +171,16 @@ public class OverviewScreen extends Screen {
 
     /** Soft round-ish glow: stacked see-through rectangles, strongest in the middle. */
     private void glow(GuiGraphicsExtractor g, int cx, int cy, int rx, int ry, int color, int strength) {
-        for (int i = 8; i >= 1; i--) {
-            int w = rx * i / 8, h = ry * i / 8;
-            g.fill(cx - w, cy - h, cx + w, cy + h, alpha(color, Math.max(1, strength / 8)));
+        // many very faint layers so there are no visible steps; corners trimmed so it reads as round
+        int steps = 28;
+        int per = Math.max(1, Math.round(strength / (float) steps));
+        for (int i = steps; i >= 1; i--) {
+            float t = i / (float) steps;
+            int w = Math.round(rx * t), h = Math.round(ry * t);
+            int cw = Math.round(w * 0.71f), ch = Math.round(h * 0.71f);
+            g.fill(cx - cw, cy - h, cx + cw, cy + h, alpha(color, per));
+            g.fill(cx - w, cy - ch, cx - cw, cy + ch, alpha(color, per));
+            g.fill(cx + cw, cy - ch, cx + w, cy + ch, alpha(color, per));
         }
     }
 

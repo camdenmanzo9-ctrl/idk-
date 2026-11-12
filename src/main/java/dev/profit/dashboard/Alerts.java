@@ -101,14 +101,16 @@ public final class Alerts {
 
     private static void renderProfitBox(GuiGraphicsExtractor g, Font f, Minecraft mc) {
         Settings s = Settings.S;
-        boolean active = PaymentLedger.isSessionActive();
-        if (!active && !s.hudShowPaused) return;
 
+        // Today's profit (since midnight) - works without sessions
+        long midnight = java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
         long profit = 0;
-        for (PaymentLedger.Entry e : PaymentLedger.entries(true)) profit += e.paidYou - e.youPaid;
+        int count = 0;
+        for (PaymentLedger.Payment p : PaymentLedger.paymentsSince(midnight)) { profit += p.paidYou - p.youPaid; count++; }
         String value = (profit > 0 ? "+" : profit < 0 ? "-" : "") + Money.format(Math.abs(profit));
         int vc = profit > 0 ? s.hudGain : profit < 0 ? s.hudLoss : s.hudZero;
-        String sub = (active ? "session " : "paused  ") + PaymentLedger.formatDurationShort(PaymentLedger.sessionMillis());
+        String sub = "today  " + count + (count == 1 ? " payment" : " payments");
+        boolean active = true;
 
         int w = Math.max(110, Math.max(f.width(value) * 2 + 20, f.width(sub) + 20)), h = 44;
         float sc = s.hudSize;
@@ -128,7 +130,7 @@ public final class Alerts {
         g.pose().scale(2f, 2f);
         g.text(f, value, 0, 0, argb(vc, 255), false);
         g.pose().popMatrix();
-        g.text(f, sub, x + 8, y + h - 10, active ? 0xFF9AA0AD : 0xFFE8A040, false);
+        g.text(f, sub, x + 8, y + h - 10, 0xFF9AA0AD, false);
         g.pose().popMatrix();
     }
 

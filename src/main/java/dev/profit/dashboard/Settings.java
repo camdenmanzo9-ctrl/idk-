@@ -22,7 +22,7 @@ public final class Settings {
     public boolean hudShow = true, hudBorder = true, hudAccentBar = true, hudShowPaused = true;
     public float hudSize = 1.0f;
     public int hudOpacity = 75, hudCorner = 3;   // 0 top left, 1 top right, 2 bottom left, 3 bottom right
-    public int hudTitle = 0x8EC5FF, hudGain = 0x4DA3FF, hudLoss = 0xFF4040, hudZero = 0xFFFFFF,
+    public int hudTitle = 0x8EC5FF, hudGain = 0x4ADE80, hudLoss = 0xFF4040, hudZero = 0xFFFFFF,
             hudBg = 0x0B1220, hudAccentColor = 0x4DA3FF;
 
     // Popup alert
@@ -96,6 +96,13 @@ public final class Settings {
             if (Files.exists(FILE)) {
                 Settings s = GSON.fromJson(Files.readString(FILE), Settings.class);
                 if (s != null) S = s;
+                // If up / down / even are all one color you can't tell them apart: put them back
+                if (S.hudGain == S.hudLoss || S.hudGain == S.hudZero || S.hudLoss == S.hudZero) {
+                    S.hudGain = 0x4ADE80;
+                    S.hudLoss = 0xFF4040;
+                    S.hudZero = 0xFFFFFF;
+                    save();
+                }
             }
         } catch (Exception e) {
             System.err.println("[Bettors] Could not read " + FILE + ": " + e);
@@ -131,7 +138,7 @@ public final class Settings {
 
     // Colors a swatch cycles through when clicked
     public static final int[] PRESETS = {
-            0x4DA3FF, 0x2F7BFF, 0x8EC5FF, 0x3ADFFF, 0x7CFF3A, 0x2ECC71, 0xB57CFF, 0xFF5CA8,
+            0x4ADE80, 0x4DA3FF, 0x2F7BFF, 0x8EC5FF, 0x3ADFFF, 0x7CFF3A, 0x2ECC71, 0xB57CFF, 0xFF5CA8,
             0xFF4040, 0xE74C3C, 0xFF5555, 0xFFA500, 0xFFAA00, 0xFFC400, 0xFFD700, 0xFFFFFF, 0xAAAAAA
     };
     public static final int[] BG_PRESETS = {0x0B1220, 0x0B1428, 0x0C1424, 0x101820, 0x0B0B14, 0x1A1A1A, 0x000000};
