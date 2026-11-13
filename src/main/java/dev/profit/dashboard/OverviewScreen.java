@@ -240,14 +240,14 @@ public class OverviewScreen extends Screen {
             wlBack = btn("All players", fx + 10, contentY() + 4, bw, () -> { wlPlayer = null; scroll = 0; rebuildWidgets(); });
             wlBack.setHeight(18);
         } else if (tab == 1 || tab == 2) {
-            int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw, sby = contentY() + 30;
+            int sbw = Math.min(170, fw / 4), sbx = fx + fw - 10 - sbw, sby = contentY() + 30 + 8;
             searchBox = new EditBox(font, -4000, -4000, 200, 12, Component.literal("Search"));   // hidden: we draw it ourselves
             searchBox.setMaxLength(32);
             searchBox.setValue(search);
             searchBox.setResponder(v -> { search = v; scroll = 0; });
             addWidget(searchBox);
             Button click = btn("", sbx, sby, sbw, () -> pendingFocus = searchBox);
-            click.setHeight(36);
+            click.setHeight(20);
             if (tab == 1) addWinLossRowButtons();
         } else if (tab == 4) {
             initAuctions();
@@ -295,7 +295,7 @@ public class OverviewScreen extends Screen {
 
     private int sTop() { return contentY() + 30; }
     private int sLeftW() { return (fw - 28) / 2; }
-    private int sCardH() { return 74; }
+    private int sCardH() { return 104; }
     private int[] sHist() {   // x, y, w, h of the history panel
         int rx = fx + 10 + sLeftW() + 8;
         return new int[]{rx, sTop(), fx + fw - 10 - rx, contentBottom() - sTop()};
@@ -346,7 +346,7 @@ public class OverviewScreen extends Screen {
     }
 
     private int wlTableY() { return contentY() + 30 + 44; }
-    private int wlRowsY() { return wlTableY() + 8 + 15; }
+    private int wlRowsY() { return wlTableY() + 8 + 19; }
     private static final int WL_ROW_H = 21;
     private int wlVisible() { return Math.max(1, (contentBottom() - 4 - wlRowsY()) / WL_ROW_H); }
 
@@ -424,7 +424,7 @@ public class OverviewScreen extends Screen {
         statBox(g, cols[4], cy, cw, "BIGGEST WIN", Money.format(biggest), biggest > 0 ? GREEN : TEXT, "one payout");
 
         // chart (left) + history (right)
-        int py = cy + 50, ph = contentBottom() - py;
+        int py = cy + 58, ph = contentBottom() - py;
         int lw = (fw - 28) * 58 / 100, rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx;
         box(g, fx + 10, py, lw, ph, PANEL, BORDER);
         caps(g, "THEIR NET OVER TIME", fx + 20, py + 10, TEXT);
@@ -458,10 +458,10 @@ public class OverviewScreen extends Screen {
     }
 
     private void statBox(GuiGraphicsExtractor g, int x, int y, int bw, String label, String value, int valueColor, String sub) {
-        box(g, x, y, bw, 42, PANEL, BORDER);
+        box(g, x, y, bw, 50, PANEL, BORDER);
         caps(g, label, x + 10, y + 8, MUTED);
-        text(g, value, x + 10, y + 19, valueColor, 1.15f, true);
-        text(g, sub, x + 10, y + 32, DIM, 0.66f, false);
+        text(g, value, x + 10, y + 21, valueColor, 1.15f, true);
+        text(g, sub, x + 10, y + 38, DIM, 0.66f, false);
     }
 
     private void onSession() {
@@ -967,13 +967,17 @@ public class OverviewScreen extends Screen {
         text(g, big, cb[0] + cb[2] - 10 - wb(big, 1.4f), cb[1] + 8, pc, 1.4f, true);
         long hiV = 0, loV = 0;
         for (long v : netSeries) { hiV = Math.max(hiV, v); loV = Math.min(loV, v); }
-        int chX = cb[0] + 10, chY = cb[1] + 32, chW = cb[2] - 20, chH = cb[3] - 42;
+        // labels get their own column on the left; the graph starts after it, so words never touch the line
+        String hiS = signedMoney(hiV), loS = signedMoney(loV);
+        int labelW = Math.max(w(hiS, 0.62f), w(loS, 0.62f)) + 8;
+        int top0 = cb[1] + 30, h0 = cb[3] - 38;
+        int chX = cb[0] + 10 + labelW, chY = top0, chW = cb[2] - 20 - labelW, chH = h0;
         for (int dx = 0; dx < chW; dx += 6) {   // faint dashed guide lines top and bottom
             g.fill(chX + dx, chY, chX + Math.min(chW, dx + 3), chY + 1, alpha(BORDER, 200));
             g.fill(chX + dx, chY + chH, chX + Math.min(chW, dx + 3), chY + chH + 1, alpha(BORDER, 200));
         }
-        text(g, signedMoney(hiV), chX, chY - 9, DIM, 0.66f, false);
-        text(g, signedMoney(loV), chX, chY + chH + 3, DIM, 0.66f, false);
+        text(g, hiS, chX - 6 - w(hiS, 0.62f), chY - 3, DIM, 0.62f, false);          // level with the top line
+        text(g, loS, chX - 6 - w(loS, 0.62f), chY + chH - 3, DIM, 0.62f, false);    // level with the bottom line
         chart(g, netSeries, chX, chY + 2, chW, chH - 4);
     }
 
@@ -1059,36 +1063,29 @@ public class OverviewScreen extends Screen {
 
     private void drawSearchFrame(GuiGraphicsExtractor g, int y) {
         if (searchBox == null) return;
-        int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw;
-        searchField(g, sbx, y, sbw, 36, searchBox, "Search players");
+        int sbw = Math.min(170, fw / 4), sbx = fx + fw - 10 - sbw;
+        searchField(g, sbx, y + 8, sbw, 20, searchBox, "Search players");
     }
 
     /** Clean search field: dark fill, purple outline when typing, magnifier, your text and a blinking cursor. */
     private void searchField(GuiGraphicsExtractor g, int x, int y, int bw, int bh, EditBox box, String hint) {
         boolean focused = box != null && box.isFocused();
         String value = box == null ? "" : box.getValue();
-        int bc = focused ? PURPLE : 0xFF3A3358;
-        g.fill(x, y, x + bw, y + bh, 0xFF0E0C17);
-        g.fill(x, y, x + bw, y + 1, bc);
-        g.fill(x, y + bh - 1, x + bw, y + bh, bc);
-        g.fill(x, y, x + 1, y + bh, bc);
-        g.fill(x + bw - 1, y, x + bw, y + bh, bc);
-        int mx0 = x + 8, my0 = y + (bh - 9) / 2;
-        int mc = focused ? TEXT : MUTED;
-        g.fill(mx0 + 1, my0, mx0 + 5, my0 + 1, mc);
-        g.fill(mx0 + 1, my0 + 5, mx0 + 5, my0 + 6, mc);
-        g.fill(mx0, my0 + 1, mx0 + 1, my0 + 5, mc);
-        g.fill(mx0 + 5, my0 + 1, mx0 + 6, my0 + 5, mc);
-        g.fill(mx0 + 5, my0 + 6, mx0 + 6, my0 + 7, mc);
-        g.fill(mx0 + 6, my0 + 7, mx0 + 8, my0 + 9, mc);
-        int tx = x + 22, ty = y + (bh - 7) / 2, maxW = bw - 30;
+        int r = Math.min(6, bh / 2);
+        round(g, x, y, bw, bh, r, focused ? PURPLE : BORDER);                 // thin border
+        round(g, x + 1, y + 1, bw - 2, bh - 2, r - 1, mixColor(FRAME, PANEL, 0.6f));   // soft dark fill
+        int lc = focused ? PURPLE_LIGHT : DIM, lx0 = x + 10, ly0 = y + bh / 2 - 1;
+        ring(g, lx0, ly0, 3, 1, 1f, lc, lc);                                  // round lens
+        g.fill(lx0 + 2, ly0 + 2, lx0 + 3, ly0 + 3, lc);                       // short handle
+        g.fill(lx0 + 3, ly0 + 3, lx0 + 4, ly0 + 4, lc);
+        int tx = x + 19, ty = y + (bh - 7) / 2, maxW = bw - 26;
         if (value.isEmpty()) {
-            text(g, hint, tx, ty, DIM, 0.8f, false);
+            text(g, hint, tx, ty, DIM, 0.66f, false);
         } else {
             String shown = value;
-            while (shown.length() > 1 && w(shown, 0.8f) > maxW) shown = shown.substring(1);   // keep the end visible
-            text(g, shown, tx, ty, TEXT, 0.8f, false);
-            tx += w(shown, 0.8f) + 1;
+            while (shown.length() > 1 && w(shown, 0.66f) > maxW) shown = shown.substring(1);   // keep the end visible
+            text(g, shown, tx, ty, TEXT, 0.66f, false);
+            tx += w(shown, 0.66f) + 1;
         }
         if (focused && (System.currentTimeMillis() / 500) % 2 == 0) g.fill(tx, ty - 1, tx + 1, ty + 8, TEXT);
     }
@@ -1120,9 +1117,9 @@ public class OverviewScreen extends Screen {
         caps(g, "BETS", cBets, hy, DIM);
         caps(g, "WAGERED", cWag, hy, DIM);
         caps(g, "NET (THEIR SIDE)", cNet - capsW("NET (THEIR SIDE)"), hy, DIM);
-        g.fill(px + 1, hy + 10, px + pw - 1, hy + 11, BORDER);
+        g.fill(px + 1, hy + 13, px + pw - 1, hy + 14, BORDER);
 
-        int rowH = WL_ROW_H, ry = hy + 15, visible = Math.max(1, (py + ph - 4 - ry) / rowH);
+        int rowH = WL_ROW_H, ry = hy + 19, visible = Math.max(1, (py + ph - 4 - ry) / rowH);
         scroll = Math.max(0, Math.min(scroll, Math.max(0, all.size() - visible)));
         for (int i = 0; i < visible && scroll + i < all.size(); i++) {
             int idx = scroll + i;
@@ -1232,11 +1229,11 @@ public class OverviewScreen extends Screen {
         box(g, lx, top, lw, ch, PANEL, BORDER);
         caps(g, picked != null ? "PAST SESSION" : active ? "SESSION LIVE" : "SESSION", lx + 12, top + 10, picked == null && active ? GREEN : MUTED);
         String when = weekday(from) + "  -  " + clock(from) + " - " + (picked == null && active ? "now" : clock(to));
-        text(g, when, lx + 12, top + 21, DIM, 0.66f, false);
-        text(g, hms(length), lx + 12, top + 31, TEXT, 1.4f, true);
+        text(g, when, lx + 12, top + 25, DIM, 0.66f, false);
+        text(g, hms(length), lx + 12, top + 40, TEXT, 1.4f, true);
         caps(g, "PROFIT", lx + lw - 12 - capsW("PROFIT"), top + 10, MUTED);
         String pr = signedMoney(profit);
-        text(g, pr, lx + lw - 12 - wb(pr, 1.5f), top + 24, profit > 0 ? GREEN : profit < 0 ? RED : GREEN, 1.5f, true);
+        text(g, pr, lx + lw - 12 - wb(pr, 1.5f), top + 27, profit > 0 ? GREEN : profit < 0 ? RED : GREEN, 1.5f, true);
 
         if (sessionButton != null) {
             boolean confirming = confirmUntil > System.currentTimeMillis();
@@ -1360,11 +1357,11 @@ public class OverviewScreen extends Screen {
 
     private int aTop() { return contentY() + 30; }
     private int aLeftW() { return (fw - 28) * 49 / 100; }
-    private int aRingH() { return Math.max(96, Math.min(170, contentBottom() - aTop() - 230)); }   // leaves room for Top bidders
+    private int aRingH() { return Math.max(70, Math.min(170, contentBottom() - aTop() - 160 - 84)); }   // always leaves room for Top bidders
     private int aCtrlY() { return aTop() + aRingH() + 8; }
     private int aFieldsY() { return aCtrlY() + 28; }
-    private int aColorY() { return aFieldsY() + 32; }
-    private int aSwitchY() { return aColorY() + 46; }
+    private int aColorY() { return aFieldsY() + 36; }
+    private int aSwitchY() { return aColorY() + 50; }
     private int aLastY() { return aSwitchY() + 34; }
     private int[] aGrid() {   // x, y, w, h of the item grid
         int rx = fx + 10 + aLeftW() + 8, rw = fx + fw - 10 - rx;
@@ -1378,7 +1375,7 @@ public class OverviewScreen extends Screen {
     private int[] aPicker() {   // square x/y/w/h, hue bar x, hex box x/w
         int lx = fx + 10, lw = aLeftW();
         int sx = lx + 76, hexW = 64, sw = lw - 76 - 10 - 8 - hexW - 6;
-        return new int[]{sx, aColorY() + 10, sw, 30, sx + sw + 4, sx + sw + 18, hexW};
+        return new int[]{sx, aColorY() + 13, sw, 30, sx + sw + 4, sx + sw + 18, hexW};
     }
 
     private static int hsv(float h, float s, float v) {
@@ -1430,14 +1427,14 @@ public class OverviewScreen extends Screen {
         secBox = hiddenBox(String.valueOf(Auction.durationMs / 1000), 4, v -> v.matches("\\d*"), v -> {
             try { if (!Auction.running) Auction.durationMs = Math.max(5, Math.min(3600, Integer.parseInt(v))) * 1000L; } catch (Exception ignored) { }
         });
-        int fy0 = aFieldsY() + 9;
+        int fy0 = aFieldsY() + 12;
         nameClick = btn("", fl[0], fy0, fl[1], () -> pendingFocus = nameBox); nameClick.setHeight(16);
         qtyClick = btn("", fl[2], fy0, fl[3], () -> pendingFocus = qtyBox); qtyClick.setHeight(16);
         secClick = btn("", fl[4], fy0, fl[5], () -> pendingFocus = secBox); secClick.setHeight(16);
 
         for (int i = 0; i < TIMER_COLORS.length; i++) {   // 2 rows of 4 swatches
             final int col = TIMER_COLORS[i];
-            Button cb = btn("", lx + (i % 4) * 16, aColorY() + 10 + (i / 4) * 16, 12, () -> Auction.color = col);
+            Button cb = btn("", lx + (i % 4) * 16, aColorY() + 13 + (i / 4) * 16, 12, () -> Auction.color = col);
             cb.setHeight(12);
             colorBtns.add(cb);
         }
@@ -1489,7 +1486,7 @@ public class OverviewScreen extends Screen {
     /** Plain input box drawn like the reference: label above, dark field, your text and a cursor. */
     private void inputField(GuiGraphicsExtractor g, String label, int x, int y, int w, EditBox box, String hint) {
         caps(g, label, x, y, DIM);
-        int by = y + 9, bh = 16;
+        int by = y + 12, bh = 16;
         boolean focused = box != null && box.isFocused();
         box(g, x, by, w, bh, 0xFF0B0A12, focused ? PURPLE : BORDER);
         String v = box == null ? "" : box.getValue();
@@ -1555,7 +1552,7 @@ public class OverviewScreen extends Screen {
         box(g, lx, top, lw, rh, PANEL, BORDER);
         String t = "AUCTIONS";
         caps(g, t, lx + (lw - capsW(t)) / 2, top + 9, acc);
-        int ccx = lx + lw / 2, rad = Math.max(30, Math.min(64, rh / 2 - 22)), ccy = top + 20 + rad + 2;
+        int ccx = lx + lw / 2, rad = Math.max(28, Math.min(64, rh / 2 - 24)), ccy = top + 25 + rad;
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 1f;
         ring(g, ccx, ccy, rad, 6, frac, acc, Auction.running ? alpha(acc, 60) : acc);
         int inner = (rad - 6) * 2 - 10;
@@ -1606,7 +1603,8 @@ public class OverviewScreen extends Screen {
             text(g, "Clear", b.getX() + (b.getWidth() - w("Clear", 0.8f)) / 2, b.getY() + (b.getHeight() - 7) / 2, hot ? TEXT : MUTED, 0.8f, false);
         }
         String note = "Biggest single payment wins (bids don't stack)";
-        text(g, note, lx + lw - w(note, 0.62f), aCtrlY() + 7, DIM, 0.62f, false);
+        if (lx + lw - w(note, 0.62f) > clearBtn.getX() + clearBtn.getWidth() + 8)   // only when it doesn't touch Clear
+            text(g, note, lx + lw - w(note, 0.62f), aCtrlY() + 7, DIM, 0.62f, false);
 
         // ---- name / quantity / seconds ----
         int[] fl = aFields();
