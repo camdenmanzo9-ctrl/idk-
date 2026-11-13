@@ -1372,11 +1372,16 @@ public class OverviewScreen extends Screen {
     }
 
     private EditBox hiddenBox(String value, int max, java.util.function.Predicate<String> filter, java.util.function.Consumer<String> onChange) {
-        EditBox b = new EditBox(font, -4000, -4000, 200, 12, Component.literal(""));   // hidden: we draw it ourselves
+        final EditBox b = new EditBox(font, -4000, -4000, 200, 12, Component.literal(""));   // hidden: we draw it ourselves
         b.setMaxLength(max);
-        if (filter != null) b.setFilter(filter);
         b.setValue(value);
-        b.setResponder(onChange::accept);
+        b.setResponder(v -> {
+            if (filter != null && !filter.test(v)) {   // numbers only: strip anything else
+                b.setValue(v.replaceAll("[^0-9]", ""));
+                return;
+            }
+            onChange.accept(v);
+        });
         addWidget(b);
         return b;
     }
