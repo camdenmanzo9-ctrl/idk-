@@ -217,6 +217,12 @@ public class OverviewScreen extends Screen {
         tabGroupEnd = tx + 1;
 
         if (tab == 0) {
+            int[] cbx = chartBox();
+            Button chartClick = btn("", cbx[0] + 10, cbx[1] + 30, cbx[2] - 20, () -> {
+                if (pinnedAt >= 0) pinnedAt = -1;          // click again: unpin
+                else pinnedAt = lastMouseX;                // pin where you clicked
+            });
+            chartClick.setHeight(Math.max(10, cbx[3] - 38));
             // session badge on the right of the welcome row
             int bw = wb("Click again to end", 0.8f) + 30;
             sessionButton = btn("", fx + fw - 10 - bw, welcomeY() + 12, bw, this::onSession);
@@ -854,14 +860,14 @@ public class OverviewScreen extends Screen {
         glow(g, fx + 90, wy + 22, 110, 26, PURPLE, 24);
         if (minecraft != null && minecraft.player != null && Settings.S.skinFaces) {
             // Standing still and facing straight ahead: the "look at" point is the middle of its own box
-            int bx1 = fx + 14, by1 = wy, bx2 = fx + 50, by2 = wy + 46;
+            int bx1 = fx + 10, by1 = wy - 2, bx2 = fx + 58, by2 = wy + 52;   // a bit bigger
             // your skin stands on its own, no tile behind it
-            InventoryScreen.extractEntityInInventoryFollowsMouse(g, bx1, by1, bx2, by2, 20, 0.0625f,
+            InventoryScreen.extractEntityInInventoryFollowsMouse(g, bx1, by1, bx2, by2, 25, 0.0625f,
                     (bx1 + bx2) / 2f, (by1 + by2) / 2f, preview());
         } else {
             face(g, me, fx + 16, wy + 4, 34);
         }
-        int nx = fx + 60;
+        int nx = fx + 66;   // welcome text moved over a little so it doesn't touch the bigger skin
         text(g, "Welcome, ", nx, wy + 9, TEXT, 1.6f, true);
         String shown = Settings.S.displayName == null || Settings.S.displayName.isBlank() ? me : Settings.S.displayName;
         glowText(g, shown, nx + wb("Welcome, ", 1.6f), wy + 9, PURPLE_LIGHT, 1.6f);
@@ -975,6 +981,54 @@ public class OverviewScreen extends Screen {
         text(g, hiS, chX - 6 - w(hiS, 0.62f), chY - 3, DIM, 0.62f, false);          // level with the top line
         text(g, loS, chX - 6 - w(loS, 0.62f), chY + chH - 3, DIM, 0.62f, false);    // level with the bottom line
         chart(g, netSeries, chX, chY + 2, chW, chH - 4);
+        chartTooltip(g, netSeries, pays, chX, chY + 2, chW, chH - 4, mouseX, mouseY, cb);
+    }
+
+    private static int pinnedAt = -1;   // screen x of a pinned chart point (-1 = none)
+
+    /** Hover (or click to pin) the chart: a line, a dot on the graph, and a box with the total, time and payment. */
+    private void chartTooltip(GuiGraphicsExtractor g, long[] vals, List<PaymentLedger.Payment> pays,
+                              int x, int y, int cw, int ch, int mx, int my, int[] panel) {
+        if (vals.length < 2) return;
+        boolean hovering = mx >= x && mx < x + cw && my >= y - 4 && my < y + ch + 4;
+        int px;
+        if (hovering) px = mx;
+        else if (pinnedAt >= x && pinnedAt < x + cw) px = pinnedAt;
+        else return;
+
+        long min = 0, max = 0;
+        for (long v : vals) { min = Math.min(min, v); max = Math.max(max, v); }
+        long pad = Math.max(1, (max - min) / 12);
+        long hi = max + pad, lo = min - pad;
+        double t = (double) (px - x) * (vals.length - 1) / Math.max(1, cw - 1);
+        int k = (int) Math.round(t);
+        k = Math.max(0, Math.min(vals.length - 1, k));
+        int dotX = x + (int) Math.round(k * (cw - 1) / (double) Math.max(1, vals.length - 1));
+        int dotY = y + (int) Math.round((hi - vals[k]) / (double) (hi - lo) * (ch - 1));
+        int col = vals[k] >= 0 ? GREEN : RED;
+
+        for (int yy = y; yy < y + ch; yy += 4) g.fill(dotX, yy, dotX + 1, Math.min(y + ch, yy + 2), alpha(MUTED, 120));   // guide line
+        round(g, dotX - 3, dotY - 3, 7, 7, 3, col);
+        round(g, dotX - 1, dotY - 1, 3, 3, 1, FRAME);
+
+        // info box
+        String total = signedMoney(vals[k]);
+        String when, what;
+        if (k == 0) { when = "start of range"; what = "before the first payment"; }
+        else {
+            PaymentLedger.Payment p = pays.get(k - 1);
+            when = day(p.ts) + ", " + clock(p.ts);
+            what = p.paidYou > 0 ? p.name + " paid you " + Money.format(p.paidYou) : "you paid " + p.name + " " + Money.format(p.youPaid);
+        }
+        int bw = Math.max(wb(total, 0.9f), Math.max(w(when, 0.62f), w(what, 0.62f))) + 16, bh = 40;
+        int bx = dotX + 10, by = dotY - bh - 8;
+        if (bx + bw > panel[0] + panel[2] - 6) bx = dotX - 10 - bw;   // flip left near the right edge
+        if (by < panel[1] + 4) by = dotY + 10;                          // flip below near the top
+        box(g, bx, by, bw, bh, PANEL, col);
+        text(g, total, bx + 8, by + 5, col, 0.9f, true);
+        text(g, when, bx + 8, by + 18, DIM, 0.62f, false);
+        text(g, what, bx + 8, by + 28, MUTED, 0.62f, false);
+        if (!hovering) text(g, "pinned  -  click to unpin", bx + bw - 6 - w("pinned  -  click to unpin", 0.5f), by - 8, DIM, 0.5f, false);
     }
 
     private static String hms(long ms) {
@@ -1354,7 +1408,10 @@ public class OverviewScreen extends Screen {
 
     private int aTop() { return contentY() + 30; }
     private int aLeftW() { return (fw - 28) * 49 / 100; }
-    private int aRingH() { return Math.max(110, Math.min(170, contentBottom() - aTop() - 160 - 84)); }   // tall enough for title + ring + status
+    private int aRingH() {   // whatever height is left after the controls, so the switch never runs past the footer
+        int controls = 8 + 28 + 36 + 50 + 28 + 4;
+        return Math.max(72, Math.min(170, contentBottom() - aTop() - controls));
+    }
     private int aCtrlY() { return aTop() + aRingH() + 8; }
     private int aFieldsY() { return aCtrlY() + 28; }
     private int aColorY() { return aFieldsY() + 36; }
@@ -1549,7 +1606,7 @@ public class OverviewScreen extends Screen {
         box(g, lx, top, lw, rh, PANEL, BORDER);
         String t = "AUCTIONS";
         caps(g, t, lx + (lw - capsW(t)) / 2, top + 9, acc);
-        int ccx = lx + lw / 2, rad = Math.max(26, Math.min(64, (rh - 48) / 2)), ccy = top + 25 + rad;   // title above, status below
+        int ccx = lx + lw / 2, rad = Math.max(12, Math.min(64, (rh - 48) / 2)), ccy = top + 25 + rad;   // title above, status below
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 1f;
         ring(g, ccx, ccy, rad, 6, frac, acc, Auction.running ? alpha(acc, 60) : acc);
         int inner = (rad - 6) * 2 - 10;
