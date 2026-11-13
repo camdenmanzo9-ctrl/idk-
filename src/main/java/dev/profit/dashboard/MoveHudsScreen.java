@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 public class MoveHudsScreen extends Screen {
     private final Screen parent;
     private static int which = 0;   // 0 profit, 1 streak, 2 auction
-    private static final String[] NAMES = {"Profit HUD", "Win streak", "Auction box"};
+    private static final String[] NAMES = {"Profit HUD", "Win streak", "Auction box", "Text overlay"};
     private static boolean big = false;
 
     public MoveHudsScreen(Screen parent) {
@@ -32,7 +32,8 @@ public class MoveHudsScreen extends Screen {
         switch (which) {
             case 0 -> { s.hudOffX += dx * step; s.hudOffY += dy * step; }
             case 1 -> { s.streakX += dx * step; s.streakY += dy * step; s.streakSeparate = true; }
-            default -> { s.auctionOffX += dx * step; s.auctionOffY += dy * step; }
+            case 2 -> { s.auctionOffX += dx * step; s.auctionOffY += dy * step; }
+            default -> { s.overlayX += dx * step; s.overlayY = Math.max(0, s.overlayY + dy * step); }
         }
         Settings.save();
     }
@@ -42,7 +43,8 @@ public class MoveHudsScreen extends Screen {
         switch (which) {
             case 0 -> { s.hudOffX = 0; s.hudOffY = 0; }
             case 1 -> { s.streakX = 8; s.streakY = 60; }
-            default -> { s.auctionOffX = 0; s.auctionOffY = 0; }
+            case 2 -> { s.auctionOffX = 0; s.auctionOffY = 0; }
+            default -> { s.overlayX = 0; s.overlayY = 4; }
         }
         Settings.save();
     }

@@ -140,6 +140,63 @@ public final class Settings {
         return SMALL_STEPS[Math.max(0, Math.min(SMALL_STEPS.length - 1, i + dir))];
     }
 
+    // Mod theme (whole mod): see MOD_THEMES
+    public int modTheme = 0;
+
+    // Text overlay (your own lines on screen, e.g. bet limits)
+    public boolean overlayOn = false, overlayRainbow = false, overlayShadow = true;
+    public String overlayLine1 = "MIN $100M  MAX $2B", overlayLine2 = "TIE = PUSH";
+    public float overlaySize = 1.5f;
+    public int overlayColor = 0xFFFFFF;
+    public int overlayX = 0, overlayY = 4;
+
+    /** Themes: name, accent color, background tint. The rest of each palette is worked out from these two. */
+    public static final String[] MOD_THEME_NAMES = {
+            "Purple", "Gray", "Mint", "Sunset", "Forest", "Ocean", "Sunrise", "Twilight", "Nebula",
+            "Cosmic", "Meadow", "Blossom", "Storm", "Autumn", "Moonlight", "Coral Reef", "Tundra", "Rainforest",
+            "Starry Night", "Crimson", "Gold", "Pink", "Lavender", "Cherry", "Lime", "Teal", "Sky",
+            "Peach", "Ruby", "Emerald", "Sapphire", "Amber", "Ice", "Midnight", "Neon", "Mono"};
+    private static final int[] THEME_ACCENT = {
+            0x8B5CF6, 0x9CA3AF, 0x34D399, 0xF97350, 0x22C55E, 0x0EA5E9, 0xFB923C, 0xA855F7, 0x7C3AED,
+            0x6366F1, 0xA3E635, 0xF9A8D4, 0x94A3B8, 0xEA580C, 0x818CF8, 0xF87171, 0xCBD5E1, 0x16A34A,
+            0x3B82F6, 0xE11D48, 0xF59E0B, 0xEC4899, 0xC4B5FD, 0xF43F5E, 0x84CC16, 0x14B8A6, 0x38BDF8,
+            0xFDBA74, 0xDC2626, 0x10B981, 0x2563EB, 0xF59E0B, 0x7DD3FC, 0x4F46E5, 0x22D3EE, 0xD4D4D4};
+    private static final int[] THEME_TINT = {
+            0x1A1033, 0x1F2023, 0x0E2A22, 0x2E1410, 0x0E2214, 0x0A1E30, 0x2E1A0C, 0x241035, 0x1C0B33,
+            0x0E0C2A, 0x1C260C, 0x2E1424, 0x1A1E26, 0x2A140A, 0x12142E, 0x2E1214, 0x1E2228, 0x0C2414,
+            0x0A1030, 0x2A0A10, 0x2A200A, 0x2E0E22, 0x221A33, 0x2E0C14, 0x1A260A, 0x0A2624, 0x0A1E2E,
+            0x2E1E12, 0x2A0A0A, 0x0A2A1E, 0x0A1430, 0x2A1E0A, 0x0E222E, 0x0C0A26, 0x082428, 0x161616};
+
+    private static int mix(int a, int b, float t) {
+        int r = (int) (((a >> 16) & 0xFF) + (((b >> 16) & 0xFF) - ((a >> 16) & 0xFF)) * t);
+        int g = (int) (((a >> 8) & 0xFF) + (((b >> 8) & 0xFF) - ((a >> 8) & 0xFF)) * t);
+        int bl = (int) ((a & 0xFF) + ((b & 0xFF) - (a & 0xFF)) * t);
+        return (r << 16) | (g << 8) | bl;
+    }
+
+    /** background, frame, panel, border, accent, accent light for theme i */
+    public static int[] themeColors(int i) {
+        i = Math.floorMod(i, MOD_THEME_NAMES.length);
+        int tint = THEME_TINT[i], acc = THEME_ACCENT[i];
+        return new int[]{mix(tint, 0x000000, 0.80f), mix(tint, 0x000000, 0.62f), mix(tint, 0x000000, 0.50f),
+                mix(tint, 0xFFFFFF, 0.06f), acc, mix(acc, 0xFFFFFF, 0.40f)};
+    }
+
+    public static int themeSwatch(int i) { return THEME_ACCENT[Math.floorMod(i, THEME_ACCENT.length)]; }
+
+    /** Pick a mod theme and carry it into the rest of the mod (menu, HUD, popup, auctions). */
+    public static void applyModTheme(int i) {
+        S.modTheme = Math.floorMod(i, MOD_THEME_NAMES.length);
+        int[] t = themeColors(S.modTheme);
+        S.bgTop = t[1];
+        S.bgBottom = t[0];
+        S.themeIndex = THEMES.length - 1;   // menu background follows the theme
+        S.accent = t[4];
+        S.hudAccentColor = t[4];
+        S.popupBorder = t[4];
+        Auction.color = 0xFF000000 | t[4];
+    }
+
     // Rakeback (Rakeback tab): give back this % of what a player lost, once they've lost at least rakeMin
     public int rakePct = 10;
     public long rakeMin = 1_000_000_000L;

@@ -90,6 +90,7 @@ public final class Alerts {
         if (mc.player == null || mc.options.hideGui) return;
         Font f = mc.font;
         if (Settings.S.hudShow) renderProfitBox(g, f, mc);
+        if (Settings.S.overlayOn) renderOverlay(g, f, mc);
         renderAuctionBox(g, f, mc);
         if (Settings.S.streakShow) renderStreak(g, f, mc);
         if (current != null) renderPopup(g, f, mc);
@@ -158,6 +159,114 @@ public final class Alerts {
         itext(g, f, s, cx - iw(f, s, scale, bold) / 2, y, color, scale, bold);
     }
 
+    private static float easeOutBack(float t) {
+        float c1 = 1.70158f, c3 = c1 + 1;
+        return 1 + c3 * (float) Math.pow(t - 1, 3) + c1 * (float) Math.pow(t - 1, 2);
+    }
+
+    private static float clamp01(float v) { return Math.max(0f, Math.min(1f, v)); }
+
+    /** About 6 seconds: item pops, ring bursts, confetti, a SOLD! stamp, then the winner. */
+    private static void renderWinCelebration(GuiGraphicsExtractor g, Font f, long age, int cx, int top) {
+        if (age > 6000) return;
+        float fade = age > 5300 ? clamp01(1f - (age - 5300) / 700f) : 1f;
+        int a = (int) (255 * fade);
+        int itemCy = top + 12 + 24;
+
+        // 1. burst ring (0 - 700 ms)
+        if (age < 700) {
+            float p = age / 700f;
+            int r = 14 + (int) (p * 56);
+            int ringA = (int) ((1f - p) * 200 * fade);
+            OverviewScreen.ring(g, cx, itemCy, r, 3, 1f, argb(Auction.color, ringA), argb(Auction.color, ringA));
+        }
+
+        // 2. confetti (0 - 2200 ms): shoots out, falls with gravity, fades
+        if (age < 2200) {
+            int[] colors = {0xFFF472B6, 0xFFFDE047, 0xFF60A5FA, 0xFF4ADE80, 0xFFC4A5FF, 0xFFFF8A65};
+            float tsec = age / 1000f;
+            for (int i = 0; i < 44; i++) {
+                double ang = (i * 137.5) * Math.PI / 180.0;                 // spread evenly all around
+                double speed = 70 + (i * 37 % 60);                           // px per second
+                double px = cx + Math.cos(ang) * speed * tsec;
+                double py = itemCy + Math.sin(ang) * speed * tsec * 0.8 + 90 * tsec * tsec;   // gravity
+                int ca = (int) (255 * clamp01(1f - age / 2200f) * fade);
+                int sz = 2 + (i % 2);
+                g.fill((int) px, (int) py, (int) px + sz, (int) py + (i % 3 == 0 ? 1 : sz), argb(colors[i % colors.length], ca));
+            }
+        }
+
+        // 3. the item pops up bigger, then settles
+        float pop = age < 500 ? 3f + 1.2f * easeOutBack(age / 500f) : 4.2f - 0.7f * clamp01((age - 500) / 400f);
+        int size = (int) (16 * pop);
+        g.pose().pushMatrix();
+        g.pose().translate(cx - size / 2f, itemCy - size / 2f);
+        g.pose().scale(pop, pop);
+        g.item(Auction.item, 0, 0);
+        g.pose().popMatrix();
+
+        // 4. SOLD! stamp slams down with a tilt (from 200 ms)
+        if (age > 200) {
+            float p = clamp01((age - 200) / 260f);
+            float sc = 3.2f - 1.6f * p;                                       // big -> normal
+            int sa = (int) (255 * p * fade);
+            g.pose().pushMatrix();
+            g.pose().translate(cx, itemCy + 6);
+            g.pose().rotate(-0.14f);
+            int w = iw(f, "SOLD!", sc, true);
+            itext(g, f, "SOLD!", -w / 2 + 1, -6 + 1, argb(0x000000, (int) (sa * 0.6f)), sc, true);
+            itext(g, f, "SOLD!", -w / 2, -6, argb(0xFFD25A, sa), sc, true);
+            g.pose().popMatrix();
+        }
+
+        // 5. winner name and amount pop in (from 500 ms)
+        if (age > 500) {
+            float p = clamp01((age - 500) / 300f);
+            int wy = itemCy + 34 + (int) ((1f - p) * 8);
+            int wa = (int) (255 * p * fade);
+            String name = Auction.winner, amount = Money.format(Auction.winAmount), gap = "  ";
+            int nw = iw(f, name, 1f, true), gw = iw(f, gap, 1f, false), aw = iw(f, amount, 1f, true);
+            int x0 = cx - (nw + gw + aw) / 2;
+            itext(g, f, name, x0 + 1, wy + 1, argb(0x000000, (int) (wa * 0.6f)), 1f, true);
+            itext(g, f, name, x0, wy, argb(0xFFFFFF, wa), 1f, true);
+            itext(g, f, amount, x0 + nw + gw + 1, wy + 1, argb(0x000000, (int) (wa * 0.6f)), 1f, true);
+            itext(g, f, amount, x0 + nw + gw, wy, argb(0x4ADE80, wa), 1f, true);
+            String won = "won " + Auction.displayName() + "!";
+            int ww = iw(f, won, 0.75f, false);
+            itext(g, f, won, cx - ww / 2 + 1, wy + 13, argb(0x000000, (int) (wa * 0.6f)), 0.75f, false);
+            itext(g, f, won, cx - ww / 2, wy + 12, argb(0xD0D3DE, wa), 0.75f, false);
+        }
+    }
+
+    /** Your own text lines, top middle of the screen (Settings > Text overlay; move with Move HUDs). */
+    private static void renderOverlay(GuiGraphicsExtractor g, Font f, Minecraft mc) {
+        Settings s = Settings.S;
+        int sw = mc.getWindow().getGuiScaledWidth();
+        float sc = s.overlaySize;
+        int y = s.overlayY;
+        double t = System.currentTimeMillis() / 1500.0;
+        for (String line : new String[]{s.overlayLine1, s.overlayLine2}) {
+            if (line == null || line.isBlank()) continue;
+            int w = (int) (f.width(line) * sc);
+            int x = (sw - w) / 2 + s.overlayX;
+            g.pose().pushMatrix();
+            g.pose().translate(x, y);
+            g.pose().scale(sc, sc);
+            if (s.overlayRainbow) {
+                int cx = 0;
+                for (int i = 0; i < line.length(); i++) {
+                    String ch = String.valueOf(line.charAt(i));
+                    g.text(f, ch, cx, 0, rainbow(t + i * 0.04), s.overlayShadow);
+                    cx += f.width(ch);
+                }
+            } else {
+                g.text(f, line, 0, 0, 0xFF000000 | s.overlayColor, s.overlayShadow);
+            }
+            g.pose().popMatrix();
+            y += (int) (11 * sc);
+        }
+    }
+
     /** Text with a soft dark shadow so it reads over the world. */
     private static void shadowed(GuiGraphicsExtractor g, Font f, String s, int cx, int y, int color, float scale, boolean bold) {
         int w = iw(f, s, scale, bold), x = cx - w / 2;
@@ -175,8 +284,13 @@ public final class Alerts {
         int cx = sw / 2 + Settings.S.auctionOffX;
         int top = sh / 2 + 14 + Settings.S.auctionOffY;    // a little below the crosshair
 
+        if (!Auction.running && Auction.winner != null) {   // somebody won: celebrate
+            renderWinCelebration(g, f, now - Auction.endedAt, cx, top);
+            return;
+        }
+
         // item name
-        shadowed(g, f, Auction.itemName, cx, top, 0xFFFFFFFF, 1.1f, true);
+        shadowed(g, f, Auction.displayName(), cx, top, 0xFFFFFFFF, 1.1f, true);
 
         // the item, 3x, gently bobbing
         int bob = (int) Math.round(Math.sin(now / 400.0) * 2);

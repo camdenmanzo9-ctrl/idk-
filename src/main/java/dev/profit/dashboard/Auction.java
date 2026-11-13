@@ -21,6 +21,22 @@ public final class Auction {
     public static long winAmount = 0;
     public static boolean ended = false;
     public static int color = 0xFF8B5CF6;
+    public static long endedAt = 0;   // when the winner was decided (for the celebration animation)
+    public static String customName = "";   // NAME box (empty = the item's own name)
+    public static int quantity = 1;         // QUANTITY box
+
+    public record Past(String name, int qty, String winner, long amount) {}
+    public static final List<Past> history = new ArrayList<>();   // newest first
+
+    /** "Dragon Head", or "100000x Dragon Head" when selling more than one. */
+    public static String displayName() {
+        String n = customName == null || customName.isBlank() ? itemName : customName;
+        return quantity > 1 ? quantity + "x " + n : n;
+    }
+
+    public static String shortName() {
+        return customName == null || customName.isBlank() ? itemName : customName;
+    }
 
     public static boolean capturing() { return running && switchOn; }
 
@@ -59,6 +75,12 @@ public final class Auction {
         winAmount = 0;
         for (Map.Entry<String, Long> e : bids.entrySet())
             if (e.getValue() > winAmount) { winner = e.getKey(); winAmount = e.getValue(); }
+        endedAt = System.currentTimeMillis();
+        history.add(0, new Past(shortName(), quantity, winner, winAmount));
+        while (history.size() > 30) history.remove(history.size() - 1);
+        if (winner != null) {
+            try { Alerts.playSound(2, 1); } catch (Exception ignored) { }   // "Level Up" ding, only you hear it
+        }
     }
 
     /** Bids, biggest first. */

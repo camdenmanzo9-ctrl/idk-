@@ -2,6 +2,7 @@ package dev.profit.dashboard;
 
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -23,6 +24,7 @@ public class SettingsScreen extends Screen {
         STREAK("Win streak", "Win streak counter (/win, /lose or keybinds)"),
         POPUP("Popup alert", "The alert for big payments you receive"),
         STYLE("Popup style", "Animations and looks of the popup alert"),
+        OVERLAY("Text overlay", "Your own text on screen (and on stream)"),
         SOUNDS("Sounds", "Sound effects for alerts and confirmations"),
         PAY("Pay confirm", "The screen that asks before a big /pay (you press Enter)");
 
@@ -38,13 +40,14 @@ public class SettingsScreen extends Screen {
                 case STREAK -> 0xFF9A5418;
                 case POPUP -> 0xFF8E2F7E;
                 case STYLE -> 0xFF8E4C80;
+                case OVERLAY -> 0xFF5A4A9A;
                 case SOUNDS -> 0xFF1F7A80;
                 case PAY -> 0xFF8A2E2E;
             };
         }
     }
 
-    private enum Kind { TOGGLE, STEPPER, PICKER, COLOR, ACTION }
+    private enum Kind { TOGGLE, STEPPER, PICKER, COLOR, ACTION, TEXT }
 
     /** One row in the options grid. */
     private static final class Row {
@@ -54,6 +57,8 @@ public class SettingsScreen extends Screen {
         Supplier<String> value; Runnable minus, plus;              // stepper / picker
         IntSupplier color; IntConsumer setColor; boolean bg;       // color
         Runnable action;                                           // action
+        Supplier<String> textGet; Consumer<String> textSet;        // text
+        EditBox box;
         int x, y, w;
         Button b1, b2;
     }
@@ -76,6 +81,7 @@ public class SettingsScreen extends Screen {
 
     @Override
     public void onClose() {
+        Settings.save();
         if (minecraft != null) minecraft.setScreen(parent);
     }
 
@@ -101,6 +107,10 @@ public class SettingsScreen extends Screen {
     private Row color(String label, IntSupplier get, IntConsumer set, boolean bg) {
         Row r = new Row(); r.kind = Kind.COLOR; r.label = label; r.color = get; r.setColor = set; r.bg = bg; rows.add(r); return r;
     }
+    private Row textRow(String label, Supplier<String> get, Consumer<String> set) {
+        Row r = new Row(); r.kind = Kind.TEXT; r.label = label; r.textGet = get; r.textSet = set; rows.add(r); return r;
+    }
+
     private Row action(String label, Runnable action) {
         Row r = new Row(); r.kind = Kind.ACTION; r.label = label; r.action = action; rows.add(r); return r;
     }
@@ -113,7 +123,9 @@ public class SettingsScreen extends Screen {
         Settings s = Settings.S;
         switch (section) {
             case GENERAL -> {
-                picker("Theme", () -> Settings.THEMES[Math.floorMod(s.themeIndex, Settings.THEMES.length)],
+                picker("Theme", () -> Settings.MOD_THEME_NAMES[Math.floorMod(s.modTheme, Settings.MOD_THEME_NAMES.length)],
+                        () -> Settings.applyModTheme(s.modTheme - 1), () -> Settings.applyModTheme(s.modTheme + 1));
+                picker("Menu", () -> Settings.THEMES[Math.floorMod(s.themeIndex, Settings.THEMES.length)],
                         () -> Settings.applyTheme(s.themeIndex - 1), () -> Settings.applyTheme(s.themeIndex + 1));
                 picker("Background", () -> s.bgGradient ? "Gradient" : "Solid",
                         () -> s.bgGradient = !s.bgGradient, () -> s.bgGradient = !s.bgGradient);
@@ -235,6 +247,16 @@ public class SettingsScreen extends Screen {
                         () -> s.confirmSoundIndex = Math.floorMod(s.confirmSoundIndex + 1, Alerts.SOUND_NAMES.length));
                 action("Preview confirm sound", () -> Alerts.playSound(s.confirmSoundIndex, 1));
             }
+            case OVERLAY -> {
+                toggle("Show overlay", () -> s.overlayOn, v -> s.overlayOn = v);
+                toggle("Rainbow text", () -> s.overlayRainbow, v -> s.overlayRainbow = v);
+                textRow("Line 1", () -> s.overlayLine1, v -> s.overlayLine1 = v);
+                textRow("Line 2", () -> s.overlayLine2, v -> s.overlayLine2 = v);
+                stepper("Size", () -> s.overlaySize + "x", () -> s.overlaySize = clamp(s.overlaySize - 0.25f, 0.5f, 4f),
+                        () -> s.overlaySize = clamp(s.overlaySize + 0.25f, 0.5f, 4f));
+                toggle("Shadow", () -> s.overlayShadow, v -> s.overlayShadow = v);
+                color("Color", () -> s.overlayColor, v -> s.overlayColor = v, false);
+            }
             case PAY -> {
                 toggle("Ask before /pay", () -> s.payAsk, v -> s.payAsk = v);
                 picker("Ask from", () -> Money.format(s.payFrom), () -> s.payFrom = Settings.stepMoney(s.payFrom, -1),
@@ -268,7 +290,7 @@ public class SettingsScreen extends Screen {
     protected void init() {
         openedAt = System.currentTimeMillis();
         ww = Math.min(width - 60, 460);
-        wh = Math.min(height - 24, 280);
+        wh = Math.min(height - 16, 300);
         wx = (width - ww) / 2;
         wy = (height - wh) / 2;
 
@@ -279,10 +301,10 @@ public class SettingsScreen extends Screen {
             Button b = addRenderableWidget(Button.builder(Component.literal(sec.label), btn -> {
                 section = sec;
                 rebuildWidgets();
-            }).bounds(wx + 12, by, 102, 18).build());
+            }).bounds(wx + 12, by, 102, 16).build());
             sideButtons.add(b);
             sideSections.add(sec);
-            by += 21;
+            by += 18;   // a little tighter so Move HUDs always fits
         }
         doneButton = addRenderableWidget(Button.builder(Component.literal("Move HUDs"), b -> {
             if (minecraft != null) minecraft.setScreen(new MoveHudsScreen(this));
@@ -313,7 +335,77 @@ public class SettingsScreen extends Screen {
                     Settings.save();
                 });
                 case ACTION -> r.b1 = invisible(r.x, r.y, r.w, ROW_H, r.action);
+                case TEXT -> {
+                    int bx = r.x + 72, bw = r.w - 80;
+                    r.box = new EditBox(font, bx, r.y + 3, bw, 14, Component.literal(r.label));
+                    r.box.setMaxLength(48);
+                    r.box.setValue(r.textGet.get());
+                    r.box.setResponder(v -> r.textSet.accept(v));
+                    addRenderableWidget(r.box);
+                }
             }
+        }
+        addThemeTiles();
+    }
+
+    // ---- Themes gallery: 2 columns x 9 rows per page ----
+    private static int themePage = 0;
+    private static final int PER_PAGE = 18;
+    private final List<Button> themeTiles = new ArrayList<>();
+    private final List<Integer> themeTileIndex = new ArrayList<>();
+    private Button pagePrev, pageNext;
+
+    private int pages() { return (Settings.MOD_THEME_NAMES.length + PER_PAGE - 1) / PER_PAGE; }
+
+    private void addThemeTiles() {
+        themeTiles.clear();
+        themeTileIndex.clear();
+        pagePrev = null; pageNext = null;
+        if (true) return;   // no gallery page: themes are picked in General > Theme
+        int cx = wx + 130, cw = ww - 140, colW = (cw - 8) / 2, tileH = 17, gap = 3, y0 = wy + 50;
+        themePage = Math.floorMod(themePage, pages());
+        for (int k = 0; k < PER_PAGE; k++) {
+            int i = themePage * PER_PAGE + k;
+            if (i >= Settings.MOD_THEME_NAMES.length) break;
+            final int idx = i;
+            int col = k / 9, row = k % 9;
+            Button b = invisible(cx + col * (colW + 8), y0 + row * (tileH + gap), colW, tileH, () -> {
+                Settings.applyModTheme(idx);
+                Settings.save();
+            });
+            themeTiles.add(b);
+            themeTileIndex.add(idx);
+        }
+        int py = y0 + 9 * (tileH + gap) + 4;
+        pagePrev = invisible(cx, py, 24, 16, () -> { themePage = Math.floorMod(themePage - 1, pages()); rebuildWidgets(); });
+        pageNext = invisible(cx + cw - 24, py, 24, 16, () -> { themePage = Math.floorMod(themePage + 1, pages()); rebuildWidgets(); });
+    }
+
+    private void themeGallery(GuiGraphicsExtractor g, int mx, int my) {
+        for (int k = 0; k < themeTiles.size(); k++) {
+            Button b = themeTiles.get(k);
+            int idx = themeTileIndex.get(k);
+            float p = rowProgress(k / 2 + 1);
+            if (p <= 0.01f) continue;
+            int x = b.getX(), y = b.getY() + (int) ((1 - p) * -8), w = b.getWidth(), h = b.getHeight();
+            boolean sel = idx == Settings.S.modTheme, hot = over(mx, my, b.getX(), b.getY(), w, h);
+            soft(g, x, y, w, h, alpha(sel ? 0xFF3A3A48 : hot ? ROW_HOVER : ROW_BG, p));
+            if (sel) outline(g, x, y, w, h, alpha(0xFF000000 | Settings.themeSwatch(idx), p));
+            int sw = 16, sh = 10, sx = x + 5, sy = y + (h - sh) / 2;
+            int c = 0xFF000000 | Settings.themeSwatch(idx);
+            for (int yy = 0; yy < sh; yy++)   // swatch with a soft top-to-bottom shade
+                g.fill(sx, sy + yy, sx + sw, sy + yy + 1, alpha(lighten(c, 0.25f - yy * 0.05f > 0 ? 0.25f - yy * 0.05f : 0f), p));
+            txt(g, Settings.MOD_THEME_NAMES[idx], sx + sw + 7, y + (h - 8) / 2, alpha(T_TEXT, p));
+        }
+        if (pagePrev != null) {
+            int y = pagePrev.getY();
+            soft(g, pagePrev.getX(), y, 24, 16, over(mx, my, pagePrev.getX(), y, 24, 16) ? 0xFF4A4A4A : 0xFF333333);
+            txt(g, "<", pagePrev.getX() + 9, y + 4, T_TEXT);
+            soft(g, pageNext.getX(), y, 24, 16, over(mx, my, pageNext.getX(), y, 24, 16) ? 0xFF4A4A4A : 0xFF333333);
+            txt(g, ">", pageNext.getX() + 9, y + 4, T_TEXT);
+            String pg = "Page " + (themePage + 1) + "/" + pages();
+            int cx = wx + 130, cw = ww - 140;
+            txt(g, pg, cx + (cw - font.width(pg)) / 2, y + 4, T_TEXT);
         }
     }
 
@@ -446,6 +538,7 @@ public class SettingsScreen extends Screen {
 
         // rows slide in one after another, top to bottom
         for (int i = 0; i < rows.size(); i++) drawRow(g, rows.get(i), mouseX, mouseY, rowProgress(i + 1));
+        if (!themeTiles.isEmpty()) themeGallery(g, mouseX, mouseY);
         if (section == Section.CHAT) drawChatPreview(g);
         if (section == Section.FILTER) {
             Settings st = Settings.S;
@@ -481,6 +574,15 @@ public class SettingsScreen extends Screen {
         if (r.kind == Kind.ACTION) {
             soft(g, x, y, w, h, alpha(hover ? 0xFF4A4A4A : 0xFF3A3A3A, p));
             txt(g, r.label, x + (w - font.width(r.label)) / 2, ty, alpha(T_MUTED, p));
+            return;
+        }
+        if (r.kind == Kind.TEXT) {
+            int bx = r.x + 72;
+            g.fill(x, y, bx - 2, y + h, alpha(ROW_BG, p));
+            g.fill(x + w - 6, y, x + w, y + h, alpha(ROW_BG, p));
+            g.fill(bx - 2, y, x + w - 6, y + 3, alpha(ROW_BG, p));
+            g.fill(bx - 2, y + 17, x + w - 6, y + h, alpha(ROW_BG, p));
+            txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
             return;
         }
         soft(g, x, y, w, h, alpha(hover ? ROW_HOVER : ROW_BG, p));
