@@ -41,7 +41,7 @@ public class OverviewScreen extends Screen {
     }
 
     private static final long DAY = 24L * 60 * 60 * 1000;
-    private static final String[] RANGE_LABELS = {"TODAY", "7D", "30D", "ALL"};
+    private static final String[] RANGE_LABELS = {"24H", "7D", "30D", "ALL"};
     private static final long[] RANGES = {DAY, 7 * DAY, 30 * DAY, 0};
     private static final String[] TAB_LABELS = {"OVERVIEW", "WIN / LOSS", "RAKEBACK", "SESSIONS", "AUCTIONS", "PROFIT PANEL"};
 
@@ -75,11 +75,7 @@ public class OverviewScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     private long now() { return paused ? frozenAt : System.currentTimeMillis(); }
-    private long since() {
-        if (range == 0)   // TODAY: since midnight, so it only changes when a payment happens
-            return java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
-        return RANGES[range] == 0 ? 0 : now() - RANGES[range];
-    }
+    private long since() { return RANGES[range] == 0 ? 0 : now() - RANGES[range]; }   // 24H = the last 24 hours
 
     // ---------------- font ----------------
     private static final Style INTER = Style.EMPTY.withFont(
@@ -918,7 +914,7 @@ public class OverviewScreen extends Screen {
         card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, play);
 
         String since0 = pays.isEmpty() ? "no payments yet" : switch (range) {
-            case 0 -> "since midnight";
+            case 0 -> "last 24 hours";
             case 1 -> "last 7 days";
             case 2 -> "last 30 days";
             default -> "since " + day(pays.get(0).ts);
@@ -1354,10 +1350,11 @@ public class OverviewScreen extends Screen {
     private Button nameClick, qtyClick, secClick, svBtn, hueBtn;
     private static float hue = 300f, sat = 0.55f, val = 0.72f;   // color picker
     private static final int CELL = 26;
+    private static final int BID_H = 92;   // TOP BIDDERS panel under the item picker
 
     private int aTop() { return contentY() + 30; }
     private int aLeftW() { return (fw - 28) * 49 / 100; }
-    private int aRingH() { return Math.max(70, Math.min(170, contentBottom() - aTop() - 160 - 84)); }   // always leaves room for Top bidders
+    private int aRingH() { return Math.max(110, Math.min(170, contentBottom() - aTop() - 160 - 84)); }   // tall enough for title + ring + status
     private int aCtrlY() { return aTop() + aRingH() + 8; }
     private int aFieldsY() { return aCtrlY() + 28; }
     private int aColorY() { return aFieldsY() + 36; }
@@ -1365,7 +1362,7 @@ public class OverviewScreen extends Screen {
     private int aLastY() { return aSwitchY() + 34; }
     private int[] aGrid() {   // x, y, w, h of the item grid
         int rx = fx + 10 + aLeftW() + 8, rw = fx + fw - 10 - rx;
-        return new int[]{rx + 10, aTop() + 48, rw - 24, contentBottom() - 18 - (aTop() + 48)};
+        return new int[]{rx + 10, aTop() + 48, rw - 24, contentBottom() - BID_H - 8 - 18 - (aTop() + 48)};
     }
     private int[] aFields() {   // name x/w, qty x/w, sec x/w
         int lx = fx + 10, lw = aLeftW();
@@ -1552,7 +1549,7 @@ public class OverviewScreen extends Screen {
         box(g, lx, top, lw, rh, PANEL, BORDER);
         String t = "AUCTIONS";
         caps(g, t, lx + (lw - capsW(t)) / 2, top + 9, acc);
-        int ccx = lx + lw / 2, rad = Math.max(28, Math.min(64, rh / 2 - 24)), ccy = top + 25 + rad;
+        int ccx = lx + lw / 2, rad = Math.max(26, Math.min(64, (rh - 48) / 2)), ccy = top + 25 + rad;   // title above, status below
         float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 1f;
         ring(g, ccx, ccy, rad, 6, frac, acc, Auction.running ? alpha(acc, 60) : acc);
         int inner = (rad - 6) * 2 - 10;
@@ -1688,7 +1685,7 @@ public class OverviewScreen extends Screen {
         }
 
         // ---- pick an item ----
-        int rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx, rpH = contentBottom() - top;
+        int rx = fx + 10 + lw + 8, rw = fx + fw - 10 - rx, rpH = contentBottom() - BID_H - 8 - top;
         box(g, rx, top, rw, rpH, PANEL, BORDER);
         caps(g, "PICK AN ITEM", rx + 10, top + 9, TEXT);
         if (!Auction.item.isEmpty()) text(g, Auction.itemName, rx + rw - 10 - wb(Auction.itemName, 0.7f), top + 9, acc, 0.7f, true);
@@ -1713,7 +1710,24 @@ public class OverviewScreen extends Screen {
             }
         }
         scrollbar(g, gr[0] + gr[2] + 4, gr[1], gr[3], rows, totalRows);
-        text(g, items.size() + " items", rx + 10, contentBottom() - 12, DIM, 0.64f, false);
+        text(g, items.size() + " items", rx + 10, top + rpH - 12, DIM, 0.64f, false);
+
+        // ---- TOP BIDDERS: under the item picker ----
+        int tby = top + rpH + 8;
+        box(g, rx, tby, rw, BID_H, PANEL, BORDER);
+        caps(g, "TOP BIDDERS", rx + 10, tby + 8, TEXT);
+        List<java.util.Map.Entry<String, Long>> topBids = Auction.sortedBids();
+        int bRow = 15, bry = tby + 24, bRows = Math.max(0, (tby + BID_H - 4 - bry) / bRow);
+        for (int i = 0; i < Math.min(bRows, topBids.size()); i++) {
+            var e = topBids.get(i);
+            int ty = bry + i * bRow;
+            if (i == 0) round(g, rx + 4, ty - 2, rw - 8, bRow - 1, 3, alpha(acc, 40));   // the leader
+            face(g, e.getKey(), rx + 8, ty, 10);
+            text(g, e.getKey(), rx + 22, ty + 1, TEXT, 0.64f, true);
+            String amt = Money.format(e.getValue());
+            text(g, amt, rx + rw - 10 - wb(amt, 0.64f), ty + 1, GREEN, 0.64f, true);
+        }
+        if (topBids.isEmpty()) text(g, Auction.running ? "Waiting for bids..." : "No bids yet", rx + 10, bry, DIM, 0.64f, false);
     }
 
     private static int onAccentFor(int c) {
