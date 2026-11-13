@@ -41,7 +41,7 @@ public class OverviewScreen extends Screen {
     }
 
     private static final long DAY = 24L * 60 * 60 * 1000;
-    private static final String[] RANGE_LABELS = {"24H", "7D", "30D", "ALL"};
+    private static final String[] RANGE_LABELS = {"TODAY", "7D", "30D", "ALL"};
     private static final long[] RANGES = {DAY, 7 * DAY, 30 * DAY, 0};
     private static final String[] TAB_LABELS = {"OVERVIEW", "WIN / LOSS", "RAKEBACK", "SESSIONS", "AUCTIONS", "PROFIT PANEL"};
 
@@ -75,7 +75,11 @@ public class OverviewScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     private long now() { return paused ? frozenAt : System.currentTimeMillis(); }
-    private long since() { return RANGES[range] == 0 ? 0 : now() - RANGES[range]; }
+    private long since() {
+        if (range == 0)   // TODAY: since midnight, so it only changes when a payment happens
+            return java.time.LocalDate.now().atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+        return RANGES[range] == 0 ? 0 : now() - RANGES[range];
+    }
 
     // ---------------- font ----------------
     private static final Style INTER = Style.EMPTY.withFont(
@@ -153,8 +157,8 @@ public class OverviewScreen extends Screen {
     protected void init() {
         applyPalette();
         // inset like the reference: dark space all around, and it stops growing on very wide screens
-        int mx = Math.max(10, width / 40), my = Math.max(8, height / 30);
-        fw = Math.min(width - mx * 2, 1400);
+        int mx = Math.max(6, width / 70), my = Math.max(5, height / 60);   // almost edge to edge
+        fw = width - mx * 2;
         fh = height - my * 2;
         fx = (width - fw) / 2;
         fy = my;
@@ -243,7 +247,7 @@ public class OverviewScreen extends Screen {
             searchBox.setResponder(v -> { search = v; scroll = 0; });
             addWidget(searchBox);
             Button click = btn("", sbx, sby, sbw, () -> pendingFocus = searchBox);
-            click.setHeight(26);
+            click.setHeight(36);
             if (tab == 1) addWinLossRowButtons();
         } else if (tab == 4) {
             initAuctions();
@@ -341,7 +345,7 @@ public class OverviewScreen extends Screen {
         return all;
     }
 
-    private int wlTableY() { return contentY() + 30 + 34; }
+    private int wlTableY() { return contentY() + 30 + 44; }
     private int wlRowsY() { return wlTableY() + 8 + 15; }
     private static final int WL_ROW_H = 16;
     private int wlVisible() { return Math.max(1, (contentBottom() - 4 - wlRowsY()) / WL_ROW_H); }
@@ -542,6 +546,7 @@ public class OverviewScreen extends Screen {
     private void pill(GuiGraphicsExtractor g, Button b, boolean on, int mx, int my, float sc) {
         int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
         boolean hover = over(b, mx, my);
+        cover(g, b, PANEL);
         round(g, x, y, bw, bh, 3, on ? PURPLE : hover ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f));
         String s = b.getMessage().getString();
         text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? onAccent() : hover ? TEXT : MUTED, sc, true);
@@ -603,6 +608,13 @@ public class OverviewScreen extends Screen {
             text(g, c, x, y, color, sc, true);
             x += wb(c, sc) + 1;
         }
+    }
+
+    /** Paint over Minecraft's own button underneath, so its white edge never peeks out at rounded corners. */
+    private void cover(GuiGraphicsExtractor g, Button b) { cover(g, b, FRAME); }
+
+    private void cover(GuiGraphicsExtractor g, Button b, int color) {
+        g.fill(b.getX(), b.getY(), b.getX() + b.getWidth(), b.getY() + b.getHeight(), color);
     }
 
     /** Rounded bar drawn behind a row of pills. */
@@ -744,6 +756,7 @@ public class OverviewScreen extends Screen {
             Button b = tabButtons.get(i);
             boolean on = i == tab, hot = over(b, mx, my);
             int fill = on ? PURPLE : hot ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f);
+            cover(g, b);
             round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, fill);   // solid: Minecraft's button never shows through
             String s = b.getMessage().getString();
             text(g, s, b.getX() + (b.getWidth() - wb(s, tabScale)) / 2, b.getY() + (b.getHeight() - 7) / 2,
@@ -753,6 +766,7 @@ public class OverviewScreen extends Screen {
         for (int i = 0; i < rangeButtons.size(); i++) {
             Button b = rangeButtons.get(i);
             boolean on = i == range;
+            cover(g, b, PANEL);
             round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3,
                     on ? PURPLE : over(b, mx, my) ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f));
             String s = b.getMessage().getString();
@@ -823,6 +837,7 @@ public class OverviewScreen extends Screen {
     /** Settings gear button. */
     private void gear(GuiGraphicsExtractor g, Button b, int mx, int my) {
         boolean hot = over(b, mx, my);
+        cover(g, b);
         box(g, b.getX() - 2, b.getY() - 2, b.getWidth() + 4, b.getHeight() + 4, hot ? 0xFF1E1A2E : PANEL, hot ? PURPLE : BORDER);
         int cx = b.getX() + b.getWidth() / 2, cy = b.getY() + b.getHeight() / 2, c = hot ? TEXT : MUTED;
         for (int k = 0; k < 8; k++) {   // teeth
@@ -903,7 +918,7 @@ public class OverviewScreen extends Screen {
         card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, play);
 
         String since0 = pays.isEmpty() ? "no payments yet" : switch (range) {
-            case 0 -> "last 24 hours";
+            case 0 -> "since midnight";
             case 1 -> "last 7 days";
             case 2 -> "last 30 days";
             default -> "since " + day(pays.get(0).ts);
@@ -1028,10 +1043,10 @@ public class OverviewScreen extends Screen {
 
     /** Little stat box like "PLAYERS 175". Returns its width. */
     private int chip(GuiGraphicsExtractor g, int x, int y, String label, String value, int valueColor) {
-        int cw = Math.max(capsW(label), wb(value, 0.95f)) + 18;
-        box(g, x, y, cw, 26, PANEL, BORDER);
-        caps(g, label, x + 9, y + 5, MUTED);
-        text(g, value, x + 9, y + 14, valueColor, 0.95f, true);
+        int cw = Math.max(capsW(label), wb(value, 0.95f)) + 22;
+        box(g, x, y, cw, 36, PANEL, BORDER);
+        caps(g, label, x + 11, y + 7, MUTED);
+        text(g, value, x + 11, y + 20, valueColor, 0.95f, true);
         return cw;
     }
 
@@ -1046,7 +1061,7 @@ public class OverviewScreen extends Screen {
     private void drawSearchFrame(GuiGraphicsExtractor g, int y) {
         if (searchBox == null) return;
         int sbw = Math.min(200, fw / 3), sbx = fx + fw - 10 - sbw;
-        searchField(g, sbx, y, sbw, 26, searchBox, "Search players");
+        searchField(g, sbx, y, sbw, 36, searchBox, "Search players");
     }
 
     /** Clean search field: dark fill, purple outline when typing, magnifier, your text and a blinking cursor. */
@@ -1097,7 +1112,7 @@ public class OverviewScreen extends Screen {
         chip(g, x, y, "DOWN ON YOU", down + " \u00b7 -" + Money.format(downSum), RED);
         drawSearchFrame(g, y);
 
-        int py = y + 34, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
+        int py = y + 44, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
         box(g, px, py, pw, ph, PANEL, BORDER);
         int cNum = px + 10, cName = px + 28, cBets = px + pw * 48 / 100, cWag = px + pw * 62 / 100, cNet = px + pw - 14;
         int hy = py + 8;
@@ -1156,7 +1171,7 @@ public class OverviewScreen extends Screen {
         chip(g, x, y, "YOU OWE", Money.format(owe), TEXT);
         drawSearchFrame(g, y);
 
-        int py = y + 36, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
+        int py = y + 46, ph = contentBottom() - py, pw = fw - 20, px = fx + 10;
         int rowH = 24, ry = py, visible = Math.max(1, (py + ph - 4 - ry) / rowH);
         scroll = Math.max(0, Math.min(scroll, Math.max(0, losers.size() - visible)));
         for (int i = 0; i < visible && scroll + i < losers.size(); i++) {
@@ -1698,11 +1713,11 @@ public class OverviewScreen extends Screen {
             text(g, about[i], bx + 14, by + 24, DIM, 0.72f, false);
             // switch
             int sw = 30, sh = 14, sx = bx + bw - sw - 14, sy = by + (bh - sh) / 2;
-            g.fill(sx, sy, sx + sw, sy + sh, on[i] ? colors[i] : 0xFF2A2640);
-            int kx = on[i] ? sx + sw - 12 : sx + 2;
-            g.fill(kx, sy + 2, kx + 10, sy + sh - 2, TEXT);
+            round(g, sx, sy, sw, sh, sh / 2, on[i] ? PURPLE : 0xFF2A2640);         // rounded pill track
+            int kd = sh - 4, kx = on[i] ? sx + sw - kd - 2 : sx + 2;
+            round(g, kx, sy + 2, kd, kd, kd / 2, 0xFFF2F0FA);                        // round white knob
             String st = on[i] ? "ON" : "OFF";
-            text(g, st, sx - 8 - wb(st, 0.75f), sy + 3, on[i] ? colors[i] : DIM, 0.75f, true);
+            text(g, st, sx - 8 - wb(st, 0.75f), sy + 3, on[i] ? PURPLE_LIGHT : DIM, 0.75f, true);
         }
         if (settingsButton != null) pill(g, settingsButton, false, mouseX, mouseY);
         int ny = panelButtons.isEmpty() ? y + 40 : panelButtons.get(panelButtons.size() - 1).getY() + 56;
