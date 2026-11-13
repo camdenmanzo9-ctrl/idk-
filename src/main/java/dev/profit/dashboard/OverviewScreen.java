@@ -87,7 +87,7 @@ public class OverviewScreen extends Screen {
         return Component.literal(s).withStyle(bold ? INTER_BOLD : INTER);
     }
 
-    private static final float TEXT_SIZE = 0.86f;   // overall text size: a bit smaller, like the reference
+    private static final float TEXT_SIZE = 1.1f;    // overall text size
 
     private void text(GuiGraphicsExtractor g, String s, int x, int y, int color, float scale, boolean bold) {
         Fonts.draw(g, font, s, x, y, color, scale * TEXT_SIZE, bold);
@@ -464,17 +464,21 @@ public class OverviewScreen extends Screen {
         if (!PaymentLedger.isSessionActive()) {
             PaymentLedger.startSession();
             confirmUntil = 0;
+            pickedSession = -1;
+            rebuildWidgets();
             return;
         }
         long t = System.currentTimeMillis();
         if (t > confirmUntil) { confirmUntil = t + 3000; return; }   // first click asks to confirm
         confirmUntil = 0;
         PaymentLedger.endSession();
+        pickedSession = -1;
+        rebuildWidgets();   // the ended session shows at the top of the history right away
     }
 
     private int welcomeY() { return contentY(); }
     private int cardsY() { return welcomeY() + 48; }
-    private int cardsH() { return 80; }
+    private int cardsH() { return 88; }
     private int[] feedBox() {
         int y = cardsY() + cardsH() + 8, h = contentBottom() - y;
         int bw = (fw - 30) * 36 / 100;
@@ -538,8 +542,7 @@ public class OverviewScreen extends Screen {
     private void pill(GuiGraphicsExtractor g, Button b, boolean on, int mx, int my, float sc) {
         int x = b.getX(), y = b.getY(), bw = b.getWidth(), bh = b.getHeight();
         boolean hover = over(b, mx, my);
-        if (on) round(g, x, y, bw, bh, 3, PURPLE);
-        else if (hover) round(g, x, y, bw, bh, 3, 0xFF221D36);
+        round(g, x, y, bw, bh, 3, on ? PURPLE : hover ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f));
         String s = b.getMessage().getString();
         text(g, s, x + (bw - wb(s, sc)) / 2, y + (bh - Math.round(9 * sc)) / 2, on ? onAccent() : hover ? TEXT : MUTED, sc, true);
     }
@@ -740,18 +743,18 @@ public class OverviewScreen extends Screen {
         for (int i = 0; i < tabButtons.size(); i++) {
             Button b = tabButtons.get(i);
             boolean on = i == tab, hot = over(b, mx, my);
-            if (on) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, PURPLE);
-            else if (hot) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, 0xFF1E1A2E);
+            int fill = on ? PURPLE : hot ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f);
+            round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, fill);   // solid: Minecraft's button never shows through
             String s = b.getMessage().getString();
             text(g, s, b.getX() + (b.getWidth() - wb(s, tabScale)) / 2, b.getY() + (b.getHeight() - 7) / 2,
-                    on ? onAccent() : hot ? TEXT : MUTED, tabScale, true);
+                    on ? onAccent() : TEXT, tabScale, true);
         }
         groupBar(g, rangeButtons);
         for (int i = 0; i < rangeButtons.size(); i++) {
             Button b = rangeButtons.get(i);
             boolean on = i == range;
-            if (on) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, PURPLE);
-            else if (over(b, mx, my)) round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3, 0xFF1E1A2E);
+            round(g, b.getX(), b.getY(), b.getWidth(), b.getHeight(), 3,
+                    on ? PURPLE : over(b, mx, my) ? mixColor(PANEL, PURPLE, 0.45f) : mixColor(PANEL, PURPLE, 0.25f));
             String s = b.getMessage().getString();
             text(g, s, b.getX() + (b.getWidth() - wb(s, 0.74f)) / 2, b.getY() + (b.getHeight() - 7) / 2, on ? onAccent() : MUTED, 0.74f, true);
         }
@@ -899,7 +902,12 @@ public class OverviewScreen extends Screen {
         String playSub = "+" + (inRange / 3_600_000L) + "h " + (inRange % 3_600_000L / 60_000L) + "m " + rangeWord();
         card(g, c2, cy, cw, ch, "PLAYTIME", (PaymentLedger.playTotal() / 3_600_000L) + "h", playSub, BLUE, TEXT, GREEN, play);
 
-        String since0 = pays.isEmpty() ? "no payments yet" : "since " + day(pays.get(0).ts);
+        String since0 = pays.isEmpty() ? "no payments yet" : switch (range) {
+            case 0 -> "last 24 hours";
+            case 1 -> "last 7 days";
+            case 2 -> "last 30 days";
+            default -> "since " + day(pays.get(0).ts);
+        };
         int pc = net >= 0 ? GREEN : RED;
         card(g, c3, cy, cw, ch, RANGE_LABELS[range] + " PROFIT", signedMoney(net), since0, pc, pc, MUTED, netSeries);
 
@@ -965,8 +973,8 @@ public class OverviewScreen extends Screen {
         softGlow(g, x + cw * 60 / 100, y + ch / 2, cw / 3, ch / 2 - 4, lineColor, 14);
         g.fill(x + 2, y, x + cw - 2, y + 2, lineColor);                       // colored line on top
         caps(g, label, x + 10, y + 9, MUTED);
-        text(g, value, x + 10, y + 25, valueColor, 1.5f, true);
-        text(g, sub, x + 10, y + 43, subColor, 0.72f, false);
+        text(g, value, x + 10, y + 26, valueColor, 1.5f, true);
+        text(g, sub, x + 10, y + 48, subColor, 0.72f, false);
         if (series != null) smoothLine(g, series, x + 10, y + ch - 22, cw - 20, 16, lineColor);
     }
 

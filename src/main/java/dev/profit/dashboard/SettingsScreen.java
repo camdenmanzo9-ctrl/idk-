@@ -337,11 +337,13 @@ public class SettingsScreen extends Screen {
                 case ACTION -> r.b1 = invisible(r.x, r.y, r.w, ROW_H, r.action);
                 case TEXT -> {
                     int bx = r.x + 72, bw = r.w - 80;
-                    r.box = new EditBox(font, bx, r.y + 3, bw, 14, Component.literal(r.label));
+                    r.box = new EditBox(font, -4000, -4000, bw, 14, Component.literal(r.label));   // hidden: drawn by us
                     r.box.setMaxLength(48);
                     r.box.setValue(r.textGet.get());
                     r.box.setResponder(v -> r.textSet.accept(v));
-                    addRenderableWidget(r.box);
+                    addWidget(r.box);
+                    final EditBox eb = r.box;
+                    r.b1 = invisible(bx, r.y + 3, bw, 14, () -> pendingFocus = eb);
                 }
             }
         }
@@ -499,8 +501,11 @@ public class SettingsScreen extends Screen {
         return 1f - (1f - p) * (1f - p) * (1f - p);
     }
 
+    private Object pendingFocus;   // text box to focus on the next frame
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        if (pendingFocus instanceof EditBox eb) { setFocused(eb); pendingFocus = null; }
         super.extractRenderState(g, mouseX, mouseY, delta);
         int secCol = section.color();
 
@@ -577,12 +582,22 @@ public class SettingsScreen extends Screen {
             return;
         }
         if (r.kind == Kind.TEXT) {
-            int bx = r.x + 72;
-            g.fill(x, y, bx - 2, y + h, alpha(ROW_BG, p));
-            g.fill(x + w - 6, y, x + w, y + h, alpha(ROW_BG, p));
-            g.fill(bx - 2, y, x + w - 6, y + 3, alpha(ROW_BG, p));
-            g.fill(bx - 2, y + 17, x + w - 6, y + h, alpha(ROW_BG, p));
+            soft(g, x, y, w, h, alpha(hover ? ROW_HOVER : ROW_BG, p));
             txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
+            int bx = r.x + 72, bw = r.w - 80, by = y + 3;
+            boolean focused = r.box != null && r.box.isFocused();
+            g.fill(bx, by, bx + bw, by + 14, alpha(0xFF0A0A0A, p));
+            outline(g, bx, by, bw, 14, alpha(focused ? 0xFFFFFFFF : 0xFFB0B0B0, p));
+            String v = r.box == null ? "" : r.box.getValue();
+            String shown = v;
+            while (shown.length() > 1 && font.width(shown) > bw - 10) shown = shown.substring(1);
+            int tx = bx + 4;
+            if (shown.isEmpty() && !focused) txt(g, "click to type", tx, by + 3, alpha(T_DIM, p));
+            else txt(g, shown, tx, by + 3, alpha(0xFFFFFFFF, p));
+            if (focused && (System.currentTimeMillis() / 500) % 2 == 0) {
+                int cx = tx + font.width(shown);
+                g.fill(cx, by + 2, cx + 1, by + 12, 0xFFFFFFFF);
+            }
             return;
         }
         soft(g, x, y, w, h, alpha(hover ? ROW_HOVER : ROW_BG, p));
