@@ -58,6 +58,19 @@ public final class Auction {
         winAmount = 0;
     }
 
+    /** Empty everything: no item, no name, quantity 1, no bids. */
+    public static void clearItem() {
+        running = false;
+        ended = false;
+        item = ItemStack.EMPTY;
+        itemName = "";
+        customName = "";
+        quantity = 1;
+        bids.clear();
+        winner = null;
+        winAmount = 0;
+    }
+
     public static void bid(String name, long amount) {
         String key = name;
         for (String k : bids.keySet()) if (k.equalsIgnoreCase(name)) { key = k; break; }

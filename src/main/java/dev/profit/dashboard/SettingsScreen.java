@@ -298,7 +298,7 @@ public class SettingsScreen extends Screen {
         sideSections.clear();
         int by = wy + 36;   // below the title and rainbow line
         for (Section sec : Section.values()) {
-            Button b = addRenderableWidget(Button.builder(Component.literal(sec.label), btn -> {
+            Button b = addWidget(Button.builder(Component.literal(sec.label), btn -> {
                 section = sec;
                 rebuildWidgets();
             }).bounds(wx + 12, by, 102, 16).build());
@@ -306,7 +306,7 @@ public class SettingsScreen extends Screen {
             sideSections.add(sec);
             by += 18;   // a little tighter so Move HUDs always fits
         }
-        doneButton = addRenderableWidget(Button.builder(Component.literal("Move HUDs"), b -> {
+        doneButton = addWidget(Button.builder(Component.literal("Move HUDs"), b -> {
             if (minecraft != null) minecraft.setScreen(new MoveHudsScreen(this));
         })
                 .bounds(wx + 12, wy + wh - 28, 102, 18).build());
@@ -412,7 +412,7 @@ public class SettingsScreen extends Screen {
     }
 
     private Button invisible(int x, int y, int w, int h, Runnable onClick) {
-        return addRenderableWidget(Button.builder(Component.literal(""), b -> onClick.run()).bounds(x, y, w, h).build());
+        return addWidget(Button.builder(Component.literal(""), b -> onClick.run()).bounds(x, y, w, h).build());
     }
 
     private static boolean over(int mx, int my, int x, int y, int w, int h) {
@@ -587,7 +587,7 @@ public class SettingsScreen extends Screen {
             int bx = r.x + 72, bw = r.w - 80, by = y + 3;
             boolean focused = r.box != null && r.box.isFocused();
             g.fill(bx, by, bx + bw, by + 14, alpha(0xFF0A0A0A, p));
-            outline(g, bx, by, bw, 14, alpha(focused ? 0xFFFFFFFF : 0xFFB0B0B0, p));
+            outline(g, bx, by, bw, 14, alpha(focused ? accent() : 0xFF5A5A5A, p));
             String v = r.box == null ? "" : r.box.getValue();
             String shown = v;
             while (shown.length() > 1 && font.width(shown) > bw - 10) shown = shown.substring(1);
@@ -606,11 +606,12 @@ public class SettingsScreen extends Screen {
                 txt(g, r.label, x + 8, ty, alpha(T_TEXT, p));
                 boolean on = r.on.getAsBoolean();
                 int sw = 24, sh = 11, sx = x + w - sw - 8, sy = y + (h - sh) / 2;
-                if (on) {
-                    soft(g, sx, sy, sw, sh, alpha(0xFFEDEDED, p));
-                } else {
+                if (on) {   // accent track, dark knob on the right
+                    soft(g, sx, sy, sw, sh, alpha(accent(), p));
+                    g.fill(sx + sw - 10, sy + 2, sx + sw - 2, sy + sh - 2, alpha(0xFF1A1A1A, p));
+                } else {    // dark track, gray knob on the left
                     soft(g, sx, sy, sw, sh, alpha(0xFF3C3C48, p));
-                    g.fill(sx + 2, sy + 2, sx + 10, sy + sh - 2, alpha(0xFFE6E6E6, p));
+                    g.fill(sx + 2, sy + 2, sx + 10, sy + sh - 2, alpha(0xFF7A7A86, p));
                 }
             }
             case STEPPER -> {
@@ -633,7 +634,7 @@ public class SettingsScreen extends Screen {
                 int bx = x + w - 98;
                 boolean hot = over(mx, my, bx, r.y + 3, 92, 14);
                 g.fill(bx, y + 2, bx + 74, y + 18, alpha(0xFF0A0A0A, p));
-                outline(g, bx, y + 2, 74, 16, alpha(hot ? 0xFFFFFFFF : 0xFFB0B0B0, p));
+                outline(g, bx, y + 2, 74, 16, alpha(hot ? accent() : 0xFF5A5A5A, p));
                 txt(g, Settings.hex(rgb), bx + 5, y + 6, alpha(T_TEXT, p));
                 g.fill(bx + 77, y + 2, bx + 93, y + 18, alpha(0xFF000000 | rgb, p));
             }
