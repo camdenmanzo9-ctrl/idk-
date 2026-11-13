@@ -158,47 +158,43 @@ public final class Alerts {
         itext(g, f, s, cx - iw(f, s, scale, bold) / 2, y, color, scale, bold);
     }
 
+    /** Text with a soft dark shadow so it reads over the world. */
+    private static void shadowed(GuiGraphicsExtractor g, Font f, String s, int cx, int y, int color, float scale, boolean bold) {
+        int w = iw(f, s, scale, bold), x = cx - w / 2;
+        itext(g, f, s, x + 1, y + 1, 0xA0000000, scale, bold);
+        itext(g, f, s, x, y, color, scale, bold);
+    }
+
+    /** Auction floating in front of you: item name, the item big, timer, top bidder. No box. */
     private static void renderAuctionBox(GuiGraphicsExtractor g, Font f, Minecraft mc) {
         long now = System.currentTimeMillis();
         boolean justEnded = Auction.ended && now - Auction.endAt < 6000;
         if ((!Auction.running && !justEnded) || Auction.item.isEmpty()) return;
 
-        int w = 104, h = 96;
         int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
-        int x = (sw - w) / 2 + Settings.S.auctionOffX, y = 6 + Settings.S.auctionOffY;   // top middle of the screen
-        int cx = x + w / 2;
+        int cx = sw / 2 + Settings.S.auctionOffX;
+        int top = sh / 2 + 14 + Settings.S.auctionOffY;    // a little below the crosshair
 
-        // soft rounded panel
-        int bg = 0xD80E0C16, bd = 0x40FFFFFF;
-        g.fill(x + 2, y, x + w - 2, y + h, bg);
-        g.fill(x, y + 2, x + w, y + h - 2, bg);
-        g.fill(x + 1, y + 1, x + w - 1, y + h - 1, bg);
-        g.fill(x + 2, y, x + w - 2, y + 1, bd);
-        g.fill(x + 2, y + h - 1, x + w - 2, y + h, bd);
-        g.fill(x, y + 2, x + 1, y + h - 2, bd);
-        g.fill(x + w - 1, y + 2, x + w, y + h - 2, bd);
+        // item name
+        shadowed(g, f, Auction.itemName, cx, top, 0xFFFFFFFF, 1.1f, true);
 
-        // spaced title
-        String title = "AUCTION";
-        int tw = 0;
-        for (char c : title.toCharArray()) tw += iw(f, String.valueOf(c), 0.76f, true) + 2;
-        int tx = cx - tw / 2;
-        for (char c : title.toCharArray()) {
-            String ch = String.valueOf(c);
-            itext(g, f, ch, tx, y + 6, 0xFFE8E6F0, 0.76f, true);
-            tx += iw(f, ch, 0.76f, true) + 2;
-        }
+        // the item, 3x, gently bobbing
+        int bob = (int) Math.round(Math.sin(now / 400.0) * 2);
+        int size = 48;
+        g.pose().pushMatrix();
+        g.pose().translate(cx - size / 2f, top + 12 + bob);
+        g.pose().scale(3f, 3f);
+        g.item(Auction.item, 0, 0);
+        g.pose().popMatrix();
 
-        // ring: lit part = time left, in the chosen timer color
-        int ccy = y + 40, rad = 20;
-        float frac = Auction.running ? Auction.left() / (float) Auction.durationMs : 0f;
-        OverviewScreen.ring(g, cx, ccy, rad, 3, frac, Auction.color, 0x50FFFFFF);
-        g.item(Auction.item, cx - 8, ccy - 13);
+        // timer (turns red in the last 10 seconds)
+        int ty = top + 12 + size + 4;
         String t = Auction.running ? String.format("%d:%02d", Auction.left() / 60000, (Auction.left() / 1000) % 60)
                 : (Auction.winner != null ? "SOLD" : "ENDED");
-        centered(g, f, t, cx, ccy + 5, 0xFFFFFFFF, 0.8f, true);
+        int tc = !Auction.running ? 0xFFFFD25A : Auction.left() <= 10_000 ? 0xFFFF5A6E : Auction.color;
+        shadowed(g, f, t, cx, ty, tc, 1.2f, true);
 
-        // leader / winner
+        // top bidder / winner
         String name = null;
         long amt = 0;
         if (Auction.running) {
@@ -208,11 +204,19 @@ public final class Alerts {
             name = Auction.winner;
             amt = Auction.winAmount;
         }
+        int by = ty + 14;
         if (name != null) {
-            centered(g, f, name + " " + Money.format(amt), cx, y + 68, 0xFF4ADE80, 0.8f, true);
-            centered(g, f, Auction.running ? "is winning" : "won!", cx, y + 80, 0xFF9AA0AD, 0.74f, false);
+            String amount = Money.format(amt);
+            String gap = "  ";
+            int nw = iw(f, name, 0.85f, true), gw = iw(f, gap, 0.85f, false), aw = iw(f, amount, 0.85f, true);
+            int x0 = cx - (nw + gw + aw) / 2;
+            itext(g, f, name, x0 + 1, by + 1, 0xA0000000, 0.85f, true);
+            itext(g, f, name, x0, by, 0xFFFFFFFF, 0.85f, true);
+            itext(g, f, amount, x0 + nw + gw + 1, by + 1, 0xA0000000, 0.85f, true);
+            itext(g, f, amount, x0 + nw + gw, by, 0xFF4ADE80, 0.85f, true);
+            shadowed(g, f, Auction.running ? "is winning" : "won!", cx, by + 11, 0xFFD0D3DE, 0.72f, false);
         } else {
-            centered(g, f, Auction.running ? "No bids yet" : "No bids", cx, y + 72, 0xFF9AA0AD, 0.7f, false);
+            shadowed(g, f, Auction.running ? "No bids yet" : "No bids", cx, by, 0xFFD0D3DE, 0.8f, false);
         }
     }
 
@@ -302,7 +306,7 @@ public final class Alerts {
         float sc = s.popupSize;
         int sw = (int) (mc.getWindow().getGuiScaledWidth() / sc);
         boolean auctionShowing = (Auction.running || (Auction.ended && now - Auction.endAt < 6000)) && !Auction.item.isEmpty();
-        int baseY = auctionShowing ? (int) (110 / sc) : 24;
+        int baseY = 24;
 
         // count-up amount
         float countP = s.popupCountUp ? Math.min(1f, age / 700f) : 1f;
